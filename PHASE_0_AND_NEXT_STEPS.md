@@ -1,177 +1,215 @@
 # AI Powered COO — Phase 0 Completion and Development Roadmap
 
-## 1. Phase 0 deliverables
+**Status:** Finalized Phase 0 baseline  
+**Document version:** 1.1.0  
+**Next milestone:** Phase 1 — Application Shell & UI Foundation (Frontend Only)  
 
-The Phase 0 documentation set is:
-- `ARCHITECTURE.md`
-- `DATABASE.md`
-- `API_CONTRACTS.md`
-- `PROVIDER_CONFIG.md`
+---
 
-These are the baseline, not a reason to delay coding. Read them together, resolve any implementation-level schema details, then start Phase 1.
+## 1. Phase 0 deliverables overview
 
-## 2. Immediate actions after Phase 0
+The complete architectural and specification baseline for AI Powered COO is documented across five synchronized Phase 0 files:
 
-1. Create a new GitHub repository for AI Powered COO.
-2. Create the Next.js + TypeScript + Tailwind application.
-3. Add the four Markdown files to the repository root.
-4. Add `.gitignore` and `.env.example`; keep real secrets outside the coding-agent workspace.
-5. Build the app shell with the four bottom tabs and responsive navigation.
-6. Add login and the two isolated demo dataset entry options, including the required Meta demo dataset.
-7. Run the app locally and verify navigation.
-8. Commit the initial runnable skeleton.
+1. **`ARCHITECTURE.md`:** Product principles, 6-tier system boundaries, mobile-first navigation, scope-aware dashboard matrix, deterministic calculation engine, and runtime Meta model mapping.
+2. **`DATABASE.md`:** Supabase PostgreSQL relational schema, multi-tenant isolation, demo sandboxing, RLS policies, audit logging, soft-deletion, and optimistic concurrency.
+3. **`API_CONTRACTS.md`:** Strongly typed REST and SSE endpoint specifications, server-side context resolution, RBAC definitions, compound cursor pagination, timezone boundary math, and AI provider contracts.
+4. **`PROVIDER_CONFIG.md`:** Runtime model specifications (100% Meta models), provider credentials, credit allocations, timeout/pre-token failover orchestration, and voice pipeline definitions.
+5. **`PHASE_0_AND_NEXT_STEPS.md`:** Phase 0 sign-off, technical dependency chain, and implementation roadmap.
 
-## 3. Development roadmap
+> **Important Boundary Notice:** Phase 0 deliverables represent architectural and contractual design alignment. **Phase 0 completion must not be confused with live provider endpoint connectivity, provisioned infrastructure, or implemented database security.** All backend integrations, security enforcement, and live model calls will be constructed and verified sequentially in Phases 1 through 11.
 
-### Phase 1 — App shell and UI foundation
-- Next.js / TypeScript / Tailwind setup.
-- PWA manifest, icons placeholder, theme tokens and responsive layout.
-- Four-tab bottom navigation: Dashboard, Data/Ledger, Log Entry, COO Copilot.
-- Login page and demo entry choices.
-- Business header and settings entry point.
-- Light/dark/system theme.
-- Initial empty/loading/error states.
+---
 
-**Exit check:** app runs, login/demo entry works, four tabs navigate, layout works on mobile and desktop.
+## 2. Finalized runtime model assignments
 
-### Phase 2 — Supabase, authentication, tenant model and RLS
-- Create Supabase project and migrations.
-- Profiles, businesses, business_members, settings and demo isolation.
-- Transactions, transaction_items and categories.
-- Authenticated server-side business context.
-- RLS and server authorization.
-- Seed the Meta demo dataset and second sample dataset.
+All runtime models invoked by the application are Meta models. Third-party providers are used strictly as inference infrastructure:
 
-**Exit check:** users can access only their authorized business; both demo options open isolated data.
+- **COO Copilot Primary LLM:** Meta Muse Spark 1.3 Contributor (Provider: Meta API)
+- **COO Copilot Fallback 1:** Muse Spark Open 1026 (Provider: Baseten — $100 credit)
+- **COO Copilot Fallback 2:** Muse Glimmer 30B (Provider: Fireworks — $1 credit)
+- **Log Entry Speech-to-Text:** Meta Muse Voice Transcribe 1.0 (Provider: Meta API)
+- **Log Entry Structured Extraction:** Muse Spark Contributor (Provider: Meta API)
+- **Copilot Voice Input (STT):** Meta Muse Voice Transcribe 1.0 (Provider: Meta API)
+- **Copilot Voice Output (TTS):** Meta MMS TTS (`facebook/mms-tts-eng`) (Separately provisioned inference endpoint)
+
+*Prohibited runtime models:* OpenAI, Anthropic, Google, DeepSeek, Whisper, and Chatterbox are strictly prohibited.
+
+---
+
+## 3. Technical dependency chain
+
+```text
+Phase 1: App Shell & UI Foundation (Frontend Only)
+   |
+Phase 2: Supabase Schema, Auth, RLS & Negative Tenant Tests
+   |
+Phase 3: Shared Transaction Engine (COGS vs Purchase Separation & Auditing)
+   +------------------------+------------------------+
+   |                        |                        |
+   v                        v                        v
+Phase 4: Ledger / Data   Phase 5: Dashboard       Phase 8: Log Entry Voice
+   |                        |                        |
+   +------------------------+                        |
+   |                                                 |
+   v                                                 |
+Phase 6: Deterministic Intelligence Engine           |
+   |                                                 |
+   v                                                 |
+Phase 7: Copilot AI & Executive Directives           |
+   |                                                 |
+   +------------------------+------------------------+
+                            |
+                            v
+Phase 9: Copilot Voice Input & MMS TTS Spoken Answers
+                            |
+Phase 10: Business Profile, Settings & Regional Tax
+                            |
+Phase 11: PWA Polish, Full Security Audit & Vercel Deployment
+                            |
+Phase 12: Verified End-to-End Demo Journey & Submission
+```
+
+---
+
+## 4. Detailed 12-phase development roadmap
+
+### Phase 1 — App shell and UI foundation (Immediate next phase)
+- Next.js application shell setup with TypeScript and Tailwind CSS.
+- Responsive mobile-first layout with persistent bottom navigation bar:
+  1. **Dashboard**
+  2. **Data / Ledger**
+  3. **Log Entry**
+  4. **COO Copilot**
+- Responsive desktop navigation (sidebar or top rail).
+- Authentication UI shell with login and sign-up pages.
+- Two isolated demo dataset selection entry points:
+  - **Meta demo dataset**
+  - **Second separate demo dataset**
+- Business Profile and Settings entry point.
+- Light, Dark, and System theme toggle.
+- Initial interactive UI shells with mock state for Dashboard (cards and slicer preview), Ledger (table preview), Log Entry (manual form toggles for Sale, Purchase, Expense), and COO Copilot (directives and chat preview).
+
+> **Phase 1 Execution Boundary:** Strictly frontend application shell and navigation structure. Do not begin Supabase backend integration, database migrations, voice capture, or live AI model calls during Phase 1.
+
+---
+
+### Phase 2 — Supabase schema, authentication, tenant model, and RLS
+- Execute Supabase PostgreSQL migrations for `profiles`, `businesses`, `business_members`, and `business_settings`.
+- Implement Supabase Auth integration (email/password and magic link).
+- Implement server-side `getAuthorizedBusinessContext(req)`.
+- Configure PostgreSQL Row Level Security (RLS) on all tenant tables (`is_business_member(business_id)`).
+- Seed and partition the two isolated demo datasets (`meta_demo` and `sample_business_2`).
+- **Mandatory Quality Gate:** Automated negative cross-tenant tests verifying that a user in Business A cannot read, insert, update, or delete records belonging to Business B, even if explicitly passing Business B's UUID.
+
+---
 
 ### Phase 3 — Shared transaction engine
-- Canonical transaction types and TypeScript contracts.
-- Create, read, update, void/delete.
-- Category management.
-- Decimal-safe calculations and tax extension points.
-- Audit records and optimistic concurrency.
-- Manual entry validations.
+- Canonical transaction types and Zod schemas for `sale`, `purchase`, and `expense`.
+- Shared transaction service handling create, update, and soft-delete mutations.
+- Server-side deterministic recalculation of line totals, discounts, taxes, and margins.
+- Strict separation of sales COGS (`buying_cost_total_minor`) from standalone stock purchases.
+- Optimistic locking via `version` column and immutable change logging via `audit_logs`.
+- **Dependency Notice:** Must be fully completed and tested before connecting the Ledger, Dashboard, or Voice Entry flows.
 
-**Exit check:** sale, purchase and expense records save correctly and can be verified in Supabase.
+---
 
-### Phase 4 — Ledger / Data tab
-- Supabase-backed transactions table.
-- Filters, search, sorting and pagination.
-- Transaction detail view and line items.
-- Edit/delete through shared transaction service.
-- Refresh/error/empty states.
+### Phase 4 — Data / Ledger tab
+- Connected Supabase transaction table with server-side compound cursor pagination `(transaction_date, id)`, search, and multi-field filtering.
+- Scope-aware views (All, Sales, Purchase, Expense).
+- Transaction detail modal with full line-item inspection.
+- Auditable edit and soft-delete/void actions routed through the Phase 3 Shared Transaction Service.
+- Loading, error, empty, and optimistic update states.
 
-**Exit check:** UI values match persisted Supabase rows.
+---
 
-### Phase 5 — Dashboard
-- Date presets: All, Today, Yesterday, 7d, 30d, MTD.
-- Custom start/end date range.
-- All / Sales / Purchase / Expense global slicer.
-- Five scope-aware KPI cards.
-- Donut/pie chart, bar chart and trend/signal chart.
-- Five insight areas: performance movement, Pareto, comparisons, forecast, alerts/RCA.
-- Business health / decision summary.
-- Responsive, readable light/dark presentation.
+### Phase 5 — Scope-aware Dashboard
+- Date preset filters: All, Today, Yesterday, Last 7 Days, Last 30 Days, Month to Date (MTD), and custom range, respecting business timezone boundaries.
+- Global Activity Slicer (`All`, `Sales`, `Purchase`, `Expense`) with end-to-end synchronization across all cards, charts, and insights.
+- Five scope-aware KPI cards dynamically switching measures based on active slicer.
+- Visualizations: Donut chart, bar comparison chart, and time-series trend chart.
+- Analytical insight sections: Performance movement, category Pareto, period comparisons, forecasts with confidence ranges, alerts, and business health summary.
+- Guardrail enforcement: Peak-hour and festival patterns appear only when historical data sufficiency criteria are met (30–60 days).
 
-**Exit check:** changing date or slicer updates all relevant dashboard sections consistently; calculations match tested source data.
+---
 
-### Phase 6 — COO intelligence foundation
-- Approved metric definitions and deterministic analytics.
-- Question understanding and timeframe/scope resolution.
-- Evidence builder and source references.
-- RCA, Pareto, period comparisons, anomaly detection.
-- Forecasting with confidence/range and data sufficiency.
-- Festival/seasonality and peak-hour analysis only where historical data supports it.
-- Chat history and intent/debug logs.
-- Response validation.
+### Phase 6 — COO deterministic intelligence engine
+- Approved deterministic business calculation modules for RCA, Pareto concentration (80/20), period variance analysis, and statistical forecasting.
+- Intent parsing, entity extraction, and timeframe/scope resolution.
+- Server-side evidence builder constructing grounded, verifiable metrics from Supabase data.
+- Automated query scrubbing and diagnostic logging to `copilot_intent_logs`.
+- **Dependency Notice:** Deterministic evidence generation must be operational and verified before Copilot AI model integration begins.
 
-**Exit check:** each answer is tied to evidence, answers the actual question and reports limitations honestly.
+---
 
-### Phase 7 — Copilot AI providers and Executive Directives
-- Baseten Executive Directives (three structured cards).
-- Fireworks DeepSeek V3.1 primary streaming chat.
-- Meta Muse Spark Contributor fallback 1.
-- Baseten Muse Spark Open 1026 fallback 2.
-- Provider adapters, error handling, token limits and cost logging.
-- Chat history and follow-up context.
+### Phase 7 — Copilot AI integration & Executive Directives
+- Primary streaming chat integration with **Meta Muse Spark 1.3 Contributor** (Meta API).
+- Multi-provider fallback orchestration: Meta API (8000ms timeout) → **Baseten (Muse Spark Open 1026)** → **Fireworks (Muse Glimmer 30B)**.
+- Pre-token failover logic and interrupted-stream handling (`STREAM_INTERRUPTED`).
+- Automated Executive Directives generation with caching and data-invalidation triggers.
 
-**Exit check:** text chat, follow-ups, streaming and fallback work end-to-end.
+---
 
-### Phase 8 — Log Entry voice
-- Audio capture and upload.
-- Modal faster-whisper transcription.
-- Baseten structured transaction extraction.
-- Preview, clarification and user confirmation.
-- Shared transaction service save.
-- Verify Ledger and Dashboard reflect the entry.
+### Phase 8 — Log Entry voice pipeline
+- Web Audio / MediaRecorder microphone capture in the Log Entry view.
+- Backend transcription via **Meta Muse Voice Transcribe 1.0** (Meta API).
+- Structured extraction via **Muse Spark Contributor** (Meta API).
+- Guardrail: Raw audio is never sent to the extractor.
+- Interactive draft preview with edit capability.
+- Explicit user confirmation before saving through the Phase 3 Shared Transaction Service to Supabase.
 
-**Exit check:** voice and manual entry produce the same canonical persisted transaction.
+---
 
-### Phase 9 — Copilot voice input and spoken answer
-- Meta Muse Voice Transcribe 1.0 for microphone input.
-- Route recognized question through standard Copilot chat.
-- Select and integrate a separate TTS provider.
-- Speak the generated answer.
-- Playback, stop, replay and error/retry controls.
-- Language preferences.
+### Phase 9 — Copilot voice input & spoken answer (TTS)
+- Voice question recording and transcription via **Meta Muse Voice Transcribe 1.0** (Meta API).
+- Spoken voice answer generation using **Meta MMS TTS** (`facebook/mms-tts-eng`) hosted on a separately provisioned inference endpoint.
+- In-browser audio playback controls (play, pause, replay, voice toggle).
+- Synchronization between streaming text answer and audio generation.
 
-**Exit check:** user asks by voice and receives both visible text and spoken answer. This is mandatory.
+---
 
-### Phase 10 — Business Profile, currency and tax jurisdiction
-- Business profile fields.
-- Country, region/state, timezone and currency.
-- Number/date formatting and financial-year settings.
-- Jurisdiction selection and tax configuration.
-- India GST configuration path with registration status and business-specific applicability.
-- Versioned, effective-dated tax rules.
-- Other countries added as reviewed jurisdiction modules.
+### Phase 10 — Business Profile, regional settings, and tax jurisdiction
+- Complete Business Profile management (legal name, industry, operating hours, branches).
+- Timezone, currency, and locale formatting controls.
+- India GST registration check (`is_gst_registered`) with conditional tax settings.
+- Versioned, effective-dated jurisdiction tax modules.
+- Protection against retroactive currency conversion.
 
-**Exit check:** settings affect display and deterministic tax calculations correctly; unknown rules never get guessed by AI.
+---
 
-### Phase 11 — PWA, security hardening and deployment
-- Manifest, icons, service worker and install flow.
-- HTTPS deployment.
-- Safe offline shell and network state.
-- Sensitive data cache policy.
-- RLS negative tests and role checks.
-- Production environment variables.
-- Vercel deployment and smoke tests.
+### Phase 11 — PWA, security audit, and Vercel deployment
+- PWA web app manifest, icons, and service worker shell.
+- Production environment variable configuration.
+- Comprehensive security audit including repeat negative RLS tests across all endpoints.
+- Production deployment on Vercel with custom domain and HTTPS.
 
-**Exit check:** installable app, secure tenant boundaries and reliable production flows.
+---
 
-### Phase 12 — Final demo and hackathon submission
-- Seed and verify demo data.
-- Prepare one complete business story for the demo.
-- Demonstrate dashboard decisions, ledger verification, manual/voice entry, Copilot RCA/forecast/recommendations and voice Q&A.
-- Record 3-minute intro + product demo.
-- Final bug fixes and submission.
+### Phase 12 — Demo readiness and presentation
+- Rehearsal of the complete, verified retail business journey:
+  1. Log in via isolated Meta demo dataset.
+  2. Review scope-aware Dashboard with synchronized filters.
+  3. Verify transactions in Data / Ledger.
+  4. Execute a Voice Log Entry (mic $\rightarrow$ Meta STT $\rightarrow$ Contributor extraction $\rightarrow$ user review $\rightarrow$ Supabase save).
+  5. Confirm newly saved transaction immediately updates Ledger and Dashboard.
+  6. Ask Copilot a voice question; receive evidence-backed RCA and listen to spoken answer via Meta MMS TTS.
+  7. Execute demo data reset and verify instant return to pristine state.
+- Performance and latency verification across all Meta inference endpoints.
+- Final documentation and hackathon submission.
 
-## 4. Suggested build order within the two-day implementation push
+---
 
-Keep the app runnable after every vertical slice. Prioritize:
-1. App shell + login/demo options.
-2. Supabase schema/auth/RLS.
-3. Shared transaction service.
-4. Ledger and basic manual entry.
-5. Dashboard core.
-6. Copilot text + Executive Directives.
-7. Voice entry and voice Q&A/TTS.
-8. PWA polish, deployment and demo.
+## 5. Definition of done for Phase 0
 
-If time becomes critical, reduce visual decoration and defer secondary analytics depth—not security, transaction correctness, or the mandatory voice-answer flow.
-
-## 5. Definition of done
-
-The product is demo-ready only when:
-- A user can enter through login or a labelled demo dataset.
-- Four bottom tabs work.
-- Manual sale, purchase and expense entries save correctly.
-- Saved data appears correctly in the Ledger and Dashboard.
-- Date range and global slicer work across the Dashboard.
-- The dashboard communicates meaningful business performance and decisions.
-- Copilot can answer evidence-based questions, follow up, explain causes, compare periods and forecast when data is sufficient.
-- Copilot voice input and spoken answers work.
-- Log Entry voice produces a reviewable draft and saves only after confirmation.
-- Country/currency/tax settings are represented safely and consistently.
-- RLS prevents cross-business data access.
-- The PWA installs and works over HTTPS.
+Phase 0 is complete when:
+- [x] All 5 documentation files (`ARCHITECTURE.md`, `DATABASE.md`, `API_CONTRACTS.md`, `PROVIDER_CONFIG.md`, `PHASE_0_AND_NEXT_STEPS.md`) are internally consistent.
+- [x] 100% Meta runtime model mapping is locked across all documents.
+- [x] Exact fallback chain (Meta API → Baseten → Fireworks) is defined and verified.
+- [x] Meta API extraction (Contributor) is accurately documented.
+- [x] Unresolved MMS TTS inference endpoint provisioning requirement is clearly flagged as a deployment dependency.
+- [x] Scope-aware Dashboard and Global Activity Slicer requirements are clearly specified.
+- [x] Shared transaction service and strict COGS vs Purchase separation are defined.
+- [x] India GST registration conditional logic is established.
+- [x] Clear boundary that Phase 0 documentation is not live security or endpoint testing.
+- [x] Technical dependency order (Phase 2 RLS $\rightarrow$ Phase 3 Transaction Engine $\rightarrow$ Phases 4/5/8 $\rightarrow$ Phase 6 Deterministic Engine $\rightarrow$ Phase 7 Copilot) is codified.
+- [x] Phase 1 is established as strictly frontend-only.
+- [x] No application source code has been modified during Phase 0 documentation update.
