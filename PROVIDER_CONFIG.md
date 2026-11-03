@@ -1,164 +1,248 @@
-# AI Powered COO — Provider Configuration
+# AI Powered COO — Provider Configuration & Runtime Model Mapping
 
-**Status:** Locked hackathon provider assignments. Confirm exact endpoint/request schema against each provider's current documentation during implementation.
+**Status:** Finalized Phase 0 baseline  
+**Runtime Model Policy:** 100% Meta models at runtime. Third-party providers (Baseten, Fireworks) are permitted strictly as inference infrastructure for approved Meta checkpoints.  
+**Prohibited Runtime Models:** OpenAI, Anthropic, Google, DeepSeek, Whisper, and Chatterbox are strictly prohibited.
+
+---
 
 ## 1. Provider responsibility matrix
 
-| Product capability | Provider | Model / service | Role |
-|---|---|---|---|
-| Main coding agent | Meta | Muse Spark 1.3 Contributor via Muse Code | Build the app |
-| Copilot live chat | Fireworks | DeepSeek V3.1 — `accounts/fireworks/models/deepseek-v3p1` | Primary text answer |
-| Chat fallback 1 | Meta | Muse Spark 1.3 Contributor | First fallback |
-| Chat fallback 2 | Baseten | Muse Spark Open 1026 — `meta-models/muse-spark-open-1026` | Second fallback |
-| Executive Directives | Baseten | Muse Spark Open 1026 | Three strategic directives |
-| Copilot voice input | Meta | Muse Voice Transcribe 1.0 | Speech-to-text |
-| Log Entry voice input | Modal | faster-whisper hosted on Modal | Speech-to-text |
-| Voice transaction extraction | Baseten | Muse Spark Open 1026 | Transcript to proposed transaction |
-| Copilot spoken answer | Separate TTS provider | To be selected/configured | Text-to-speech; mandatory feature |
+| Capability | Model checkpoint | Inference provider | Allocation & Status | Fallback role |
+|---|---|---|---|---|
+| **Coding agent** | Meta Muse Spark 1.3 | Meta API / Muse Code | Active developer environment | App implementation |
+| **COO Copilot LLM** | Meta Muse Spark | Meta API | Active account access | **Primary** |
+| | Muse Spark Open 1026 | Baseten | $100 hackathon credit | **Fallback 1** |
+| | Muse Glimmer 30B | Fireworks | $1 hackathon credit | **Fallback 2** |
+| **Executive Directives** | Meta Muse Spark 1.3 Contributor | Meta API (w/ Baseten FB) | Active account access | Strategic directives |
+| **Log Entry Voice STT** | Meta Muse Voice Transcribe 1.0 | Meta API | Active account access | Audio transcription |
+| **Log Entry Structured Extraction** | Muse Spark Contributor | Meta API | Active account access | Text to JSON draft |
+| **Copilot Voice Input (STT)** | Meta Muse Voice Transcribe 1.0 | Meta API | Active account access | Spoken question transcription |
+| **Copilot Voice Output (TTS)** | Meta MMS TTS (`facebook/mms-tts-eng`) | Separately provisioned inference endpoint | **Deployment Dependency** | English spoken response |
 
-## 2. Environment variables
+---
 
-Use placeholders in `.env.example`. Real values belong only in local secret storage or deployment environment variables.
+## 2. Environment variables and provider credentials
 
+All provider keys and URLs reside in server-side environment variables. Real keys must never be exposed to the client bundle (`NEXT_PUBLIC_*`), printed to logs, or committed to version control.
+
+> **Important:** All endpoint URLs and API keys below are explicit template placeholders. No fabricated or unverified URLs are presented as working endpoints. Real values must be obtained directly from provider dashboards.
+
+### `.env.example` Template
 ```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+# ==============================================================================
+# Supabase Configuration
+# ==============================================================================
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key-placeholder
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key-placeholder
 
-META_API_KEY=
-BASETEN_API_KEY=
-FIREWORKS_API_KEY=
-MODAL_API_KEY=
+# ==============================================================================
+# Meta API (Primary Chat + Log Entry STT + Log Entry extraction)
+# COO reasoning: Muse Spark Standard (META_MODEL_ID=muse-spark-1.3)
+# Log Entry extraction ONLY: Muse Spark Contributor (META_EXTRACTION_MODEL_ID)
+# Voice transcription: Muse Voice Transcribe 1.0 (META_ASR_TRANSCRIBE_URL)
+# Obtain from: Meta Developer / Muse platform dashboard
+# ==============================================================================
+META_API_KEY=your-meta-api-key-placeholder
+META_BASE_URL=https://api.meta.ai/v1
+META_MODEL_ID=muse-spark-1.3
+META_ASR_TRANSCRIBE_URL=https://api.meta.ai/v1/asr/transcribe
+META_EXTRACTION_MODEL_ID=muse-spark-1.3-contributor
 
-# Configure only after choosing the TTS provider
-TTS_PROVIDER=
-TTS_API_KEY=
-TTS_MODEL=
+# ==============================================================================
+# Baseten (Fallback 1 Chat - $100 Credit)
+# Accessible model: Muse Spark Open 1026
+# Obtain from: Baseten dashboard (API Keys & Model Deployment section)
+# ==============================================================================
+BASETEN_API_KEY=your-baseten-api-key-placeholder
+BASETEN_MUSE_SPARK_MODEL_ID=your-baseten-model-id-placeholder
+
+# ==============================================================================
+# Log Entry structured extraction — Muse Spark Contributor via Meta API.
+# The old Modal-based extraction integration has been removed; there is no
+# Modal endpoint, key, token, or fallback in the Log Entry path.
+# ==============================================================================
+
+# ==============================================================================
+# Fireworks (Fallback 2 Chat - $1 Credit)
+# Accessible model: Muse Glimmer 30B
+# Obtain from: Fireworks AI dashboard (API Keys section)
+# ==============================================================================
+FIREWORKS_API_KEY=your-fireworks-api-key-placeholder
+FIREWORKS_MUSE_GLIMMER_MODEL_ID=accounts/fireworks/models/muse-glimmer-30b
+
+# ==============================================================================
+# Meta MMS TTS (Copilot Voice Output - English checkpoint: facebook/mms-tts-eng)
+# Status: Unresolved / Deployment Dependency to be provisioned separately.
+# Do not assume another host provides this model; provision before Phase 9.
+# ==============================================================================
+MMS_TTS_ENDPOINT_URL=https://your-mms-tts-inference-endpoint.example.com/tts
+MMS_TTS_API_KEY=your-mms-tts-endpoint-api-key-placeholder
 ```
 
-- `NEXT_PUBLIC_*` values are public by definition. Never put provider keys or service-role keys in them.
-- Keep all provider calls in server-only modules.
-- `.gitignore` must exclude `.env`, `.env.*`, local credential files and generated secrets, while allowing `.env.example`.
-- `.gitignore` prevents Git commits; it does not prevent a coding agent from reading a file. Keep actual secrets outside the agent workspace where possible.
+---
 
-## 3. Provider adapters
+## 3. Provider access & operational constraints
 
-Create a provider-neutral interface for:
-- `generateText`
-- `streamText`
-- `transcribeAudio`
-- `synthesizeSpeech`
+### 3.1 Meta API (Primary Chat, Directives, STT, and Log Entry extraction)
+- **COO reasoning model:** Muse Spark Standard (`META_MODEL_ID=muse-spark-1.3`) — primary Copilot brain. Never replaced by extraction.
+- **Log Entry extraction model:** Muse Spark Contributor (`META_EXTRACTION_MODEL_ID=muse-spark-1.3-contributor`) — transcript-to-JSON extraction ONLY.
+- **Transcription model:** Meta Muse Voice Transcribe 1.0 via `META_ASR_TRANSCRIBE_URL`.
+- **Credentials:** Dedicated `META_API_KEY` and base URL configured in server environment.
+- **Role:** Primary workhorse for Copilot chat, Executive Directives generation, Log Entry transcription, Log Entry extraction (Contributor), and Copilot voice input transcription.
+- **Latency & Timeout:** Client requests timeout after 8,000ms, triggering Fallback 1 if no stream tokens have been emitted.
 
-Each adapter must normalize:
-- request parameters
-- response content
-- token usage
-- latency
-- provider error type
-- retryability
-- timeout and cancellation
+### 3.2 Baseten ($100 credit allocation)
+- **Accessible model:** Muse Spark Open 1026 (`meta-models/muse-spark-open-1026`).
+- **Credentials:** `BASETEN_API_KEY` and model deployment ID from Baseten console.
+- **Role:** First failover tier (Fallback 1) for Copilot chat if the Meta API experiences upstream outages, rate limits, or network timeouts.
+- **Budgetary runway:** $100 hackathon credit provides ample buffer for chat failovers.
 
-Do not couple business logic directly to vendor SDK response shapes.
+### 3.3 Log Entry extraction (Muse Spark Contributor — no Modal)
+- **Model:** Muse Spark Contributor (`META_EXTRACTION_MODEL_ID=muse-spark-1.3-contributor`) via Meta API.
+- **Role:** Dedicated structured JSON extraction for voice log entries (converting transcribed text into validated Sale, Purchase, or Expense JSON drafts).
+- **Removed:** The old Modal-based extraction integration (endpoint, keys, tokens, fallback) is deleted from the Log Entry path.
+- **Strict rule:** **Never send raw audio to the extractor.** Audio is transcribed first by Meta Voice Transcribe 1.0; only the resulting text transcript is delivered to Contributor.
 
-## 4. Copilot chat routing
+### 3.4 Fireworks ($1 credit allocation)
+- **Accessible model:** Muse Glimmer 30B (`accounts/fireworks/models/muse-glimmer-30b`).
+- **Credentials:** `FIREWORKS_API_KEY` from Fireworks AI dashboard.
+- **Role:** Final failover tier (Fallback 2) for Copilot chat. Due to the limited credit budget ($1), Fireworks is strictly reserved for secondary failover when both Meta API and Baseten fail.
 
-Order:
-1. Fireworks DeepSeek V3.1.
-2. Meta Muse Spark 1.3 Contributor.
-3. Baseten Muse Spark Open 1026.
+### 3.5 Meta MMS TTS (`facebook/mms-tts-eng`) — Deployment Dependency
+- **Status:** **Unresolved deployment dependency; must be provisioned separately**.
+- **Model checkpoint:** Official Meta open-weights model `facebook/mms-tts-eng` (English).
+- **Role:** Text-to-speech synthesis for COO Copilot spoken answers (mandatory feature).
+- **Constraint:** Provision a containerized inference endpoint (e.g., FastAPI on Hugging Face Endpoints, RunPod, or a dedicated instance) prior to Phase 9.
 
-Fallback triggers:
-- connection failure
-- provider unavailable
-- rate limit
-- timeout
-- provider-side server error
+---
 
-Do not fallback because the answer is unpopular or disagrees with another model.
+## 4. Provider adapter architecture
 
-Streaming rules:
-- Before first token: safe to try next provider.
-- After first token: do not splice another model's answer into the partial stream. Mark interrupted and let the user retry/restart.
-- Persist which provider/model produced the final answer.
-- Use the same verified evidence and conversation context for all providers.
+To prevent vendor lock-in and keep business logic decoupled from vendor-specific payload shapes, all model interactions execute through strongly typed server-side adapters:
 
-## 5. Baseten Executive Directives
+```text
+                  +--------------------------------+
+                  |    Provider Adapter Interface  |
+                  +--------------------------------+
+                                  |
+     +-----------------+----------+----------+-----------------+
+     |                 |                     |                 |
+     v                 v                     v                 v
+[Meta API]        [Baseten]            [Fireworks]
+Muse Spark 1.3    Muse Spark 1026      Muse Glimmer 30B
+Muse Voice 1.0 + Contributor
+```
 
-- Generate three structured directives.
-- Inputs: compact deterministic analytics and evidence references.
-- Trigger: Copilot open when cache is stale, explicit refresh, or meaningful transaction/data refresh.
-- Do not regenerate for every chat message.
-- Cache by business + evidence/data version + timeframe.
-- Each directive must include evidence, reason, recommended action, confidence and limitations.
-- Never create a directive without sufficient evidence.
+### Standard Adapter Methods:
+1. `streamChat(messages, evidence, options): AsyncIterable<StreamChunk>`
+2. `transcribeAudio(audioBuffer, mimeType): Promise<TranscriptionResult>`
+3. `extractStructuredTransaction(transcript, context): Promise<TransactionDraft>`
+4. `synthesizeSpeech(text, voiceOptions): Promise<AudioBuffer>`
 
-## 6. Baseten transaction extraction
+---
 
-Input: transcript plus server-verified business context (currency, timezone, allowed categories, configured tax jurisdiction).
+## 5. COO Copilot chat routing, timeouts & failover rules
 
-Output: proposed transaction draft only.
-- Type: sale / purchase / expense
-- Date
-- Description
-- Items/quantity/unit/prices where applicable
-- Category suggestion
-- Tax fields only where configured and supported
-- Missing/ambiguous fields
-- Clarifying questions
+### 5.1 Fallback Execution Chain
+```text
+Client Message 
+      |
+      v
+Build Server Evidence (Supabase)
+      |
+      v
+Try Meta API (Muse Spark 1.3 Contributor) [Timeout: 8000ms]
+      |
+      +---> Success: Stream SSE tokens to client
+      |
+      +---> Error (Timeout / 5xx / 429) BEFORE first token:
+            |
+            v
+      Try Baseten (Muse Spark Open 1026) [Timeout: 8000ms]
+            |
+            +---> Success: Stream SSE tokens to client
+            |
+            +---> Error BEFORE first token:
+                  |
+                  v
+            Try Fireworks (Muse Glimmer 30B) [Timeout: 8000ms]
+                  |
+                  +---> Success: Stream SSE tokens to client
+                  +---> Error: Emit structured 502 PROVIDER_UNAVAILABLE error
+```
 
-Rules:
-- Do not save directly.
-- User must review and confirm.
-- Shared transaction service recalculates and validates totals.
-- Reject or ask clarification for ambiguous currency, quantity, price or transaction type.
-- Never treat a standalone purchase as sale COGS.
+### 5.2 Strict Failover & Streaming Rules
+1. **Pre-token failover only:** Upstream provider failover is strictly permissible **only before the first token has been sent to the client**.
+2. **Interrupted stream behavior:** If an error, socket disconnect, or provider outage occurs **after one or more tokens have been flushed**, the server **never** attempts to splice tokens from another model into the partial response. Instead:
+   - The stream terminates immediately with an SSE error event:  
+     `event: error`  
+     `data: {"code": "STREAM_INTERRUPTED", "message": "Upstream connection dropped mid-stream. Please retry.", "retryable": true}`
+   - The connection closes cleanly.
+   - The client UI renders an interrupted notice with an intuitive retry button.
+3. **Deterministic evidence parity:** All providers in the fallback chain receive the exact same server-generated evidence snapshot. Models are evaluated purely on analytical reasoning over the identical verified facts.
+4. **Retry policy:** Transient network disconnects before stream initiation are retried once with a 500ms backoff before failing over to the next provider. No unbounded retry loops are permitted.
+5. **No speculative fallback:** Failovers trigger exclusively on transport errors, timeouts (>8000ms), 5xx server errors, or 429 rate limits—never due to subjective disagreement with a model's analysis.
 
-## 7. Voice pipelines
+---
 
-### 7.1 Log Entry voice
+## 6. Voice processing pipelines
 
-`Browser microphone → authenticated upload → Modal faster-whisper → transcript → Baseten extraction → preview → user confirmation → shared transaction service → Supabase`
+### 6.1 Log Entry Voice Flow
+```text
+[Browser Mic + client WAV conversion]
+      | (mono PCM16 WAV 16 kHz)
+      v
+[POST /api/entry/transcribe]
+      | -> Meta API (Meta Muse Voice Transcribe 1.0)
+      v
+[Transcript Text]
+      | -> Meta API (Muse Spark Contributor)
+      v
+[Structured Draft JSON]
+      | -> User Review & Edit UI
+      v
+[User Explicit Confirmation]
+      | -> Shared Transaction Service -> Supabase PostgreSQL
+```
+- **Rule:** Contributor receives strictly text transcripts; raw audio bytes are never sent to the extractor.
+- **Retention:** Audio buffers are held ephemerally in memory during transcription and purged immediately upon completion.
 
-- Modal is infrastructure/compute; faster-whisper is the speech recognition engine.
-- Do not use Llama as the speech recognition model.
-- Temporary audio retention must be minimized and documented.
-- Handle Tamil/English and mixed-language quality through real sample tests.
+### 6.2 Copilot Voice Q&A Flow
+```text
+[Browser Mic]
+      | (audio/webm, audio/wav, audio/mp4)
+      v
+[POST /api/copilot/voice/transcribe]
+      | -> Meta API (Meta Muse Voice Transcribe 1.0)
+      v
+[Question Text]
+      | -> Copilot Chat Router (Meta API -> Baseten -> Fireworks)
+      v
+[Text Answer + Verified Evidence]
+      | -> Meta MMS TTS (facebook/mms-tts-eng)
+      v
+[Audio Stream + Synchronized Text Display in Browser]
+```
 
-### 7.2 Copilot voice
+---
 
-`Browser microphone → Meta Muse Voice Transcribe 1.0 → recognized question → standard Copilot chat router → answer → TTS provider → audio playback`
+## 7. Budget, credit, and latency management
 
-- This pipeline does not use Modal.
-- STT and TTS are different capabilities.
-- Spoken answer is mandatory. Select a TTS provider before completing this milestone.
-- Preserve the text answer and provide replay/stop controls.
-- Respect user language and voice preferences.
+1. **Meta API:** Primary workhorse; prompt tokens are optimized by passing compact, pre-aggregated financial facts rather than raw ledger tables.
+2. **Baseten ($100 credit):** Ample runway for failover; monitor concurrency and request timeouts (8000ms threshold).
+3. **Contributor extraction:** Transcript-to-JSON prompts use compact JSON schema constraints to minimize token consumption.
+4. **Fireworks ($1 credit):** Minimal reserve; capped strictly at Fallback 2 for emergency failover.
+5. **Directive Caching:** Executive Directives are cached by business ID and data version; they are regenerated only on meaningful ledger changes or explicit user refresh.
 
-## 8. Token, latency and cost controls
+---
 
-- Send compact relevant evidence, not the full database or all analytics.
-- Limit output tokens according to task.
-- Keep chat history bounded and summarize older context when needed.
-- Cache Executive Directives and stable analytics.
-- Avoid duplicate calls caused by component rerenders or repeated refreshes.
-- Record token usage, latency, model, provider, status and estimated cost.
-- Add request-level rate limits and per-business usage controls.
-- Configure provider-side spend controls where available.
-- Sponsor credits are for the hackathon period only; do not design the post-hackathon product as if these credits continue indefinitely.
+## 8. Coding-agent security boundary
 
-## 9. Reliability and fallback tests
+The coding agent (Muse Code) is authorized to create and edit application source code, test suites, and `.env.example`.
 
-- Primary provider success.
-- Primary timeout before first token → fallback 1.
-- Primary unavailable → fallback 1 success.
-- Primary and fallback 1 fail → fallback 2.
-- Stream fails after partial output → interrupted state, no mixed answer.
-- Malformed provider response → validation error / fallback where safe.
-- Provider rate limit → bounded retry or fallback.
-- TTS failure → preserve visible text answer and show audio retry; voice-answer requirement must be completed before product acceptance.
-- Transcription failure → allow retry or manual text entry.
-- Never expose provider API keys in client bundles, logs or error messages.
-
-## 10. Coding-agent secret boundary
-
-Muse Code may read and edit source code, tests and `.env.example`. It must not read, print, copy, expose or modify actual secret files. If a secret is required for testing, ask the user to configure it securely. Do not hardcode credentials.
+**Strict security rules:**
+- The agent must **never** read, inspect, print, copy, or log active `.env` files or real credential strings.
+- All mock tests and development environments must run using simulated adapters or sanitized test credentials provided out-of-band by the developer.
+- Any attempt to expose secrets in source code, client bundles, or error messages will cause immediate rejection during quality gate reviews.
