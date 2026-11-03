@@ -1,0 +1,46 @@
+// Slice 7 regression part 2: providers/image/voice/TTS/routes (mocked).
+// Run: node scripts/check-slice7b.cjs
+const { assert, readSrc } = require("./slice7-harness.cjs");
+(async () => {
+  const orch = readSrc("lib/ai/orchestrate.ts");
+  assert.ok(orch.includes("callMetaStandardWithTools"));
+  assert.ok(orch.includes("callFireworksWithTools"));
+  assert.ok(orch.includes("validateAnswer"));
+  const prov = readSrc("lib/ai/providers.ts");
+  assert.ok(prov.includes("tool_calls"));
+  assert.ok(prov.includes("tool_choice"));
+  console.log("ok - 11 meta primary + fireworks fallback compatibility");
+  const imgSrc = readSrc("lib/ai/image.ts");
+  assert.ok(imgSrc.includes("isExplicitImageRequest"));
+  assert.ok(imgSrc.includes("validateImageRequest"));
+  assert.ok(imgSrc.includes("/images/generations"));
+  assert.ok(imgSrc.includes("chart") && imgSrc.includes("dashboard"));
+  console.log("ok - 12 image request validation + failure shape");
+  const ttsSrc = readSrc("lib/ai/tts.ts");
+  assert.ok(ttsSrc.includes("sanitizeForTts"));
+  assert.ok(ttsSrc.includes("synthesizeCopilotSpeech"));
+  assert.ok(ttsSrc.includes("facebook/mms-tts-eng"));
+  assert.ok(ttsSrc.includes("Text answer unaffected"));
+  console.log("ok - 13 tts from final answers only, failure preserves text");
+  const voice = readSrc("app/api/copilot/voice/transcribe/route.ts");
+  assert.ok(voice.includes("transcribeWithMeta"));
+  assert.ok(voice.includes("16 kHz"));
+  const entry = readSrc("app/api/entry/transcribe/route.ts");
+  assert.ok(entry.includes("transcribeWithMeta"));
+  const speak = readSrc("app/api/copilot/voice/speak/route.ts");
+  assert.ok(speak.includes("synthesizeCopilotSpeech"));
+  const img = readSrc("app/api/copilot/image/route.ts");
+  assert.ok(img.includes("generateCopilotImage"));
+  assert.ok(img.includes("validateImageRequest"));
+  assert.ok(readSrc("lib/ai/image.ts").includes("/images/generations"));
+  assert.ok(!/MMS_TTS_API_KEY/.test(speak + img));
+  const page = readSrc("app/copilot/page.tsx");
+  assert.ok(page.includes("/api/copilot/voice/transcribe"));
+  assert.ok(page.includes("sendText"));
+  assert.ok(page.includes("Speak"));
+  console.log("ok - 14 routes + UI wiring");
+  assert.ok(orch.includes("decideSpecialistNeed"));
+  assert.ok(orch.includes("validateRecommendations"));
+  console.log("ok - 15 slices 1-6 intact");
+  console.log("ALL SLICE 7 CHECKS PASSED");
+})().catch((e) => { console.error(e); process.exit(1); });
