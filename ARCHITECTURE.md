@@ -1,6 +1,6 @@
 # AI Powered COO — Application Architecture
 
-**Status:** Phase 0 baseline  
+**Status:** Finalized Phase 0 baseline  
 **Product:** AI Powered COO  
 **Audience:** Business owners and operators worldwide  
 **Primary objective:** Give a business owner a reliable, easy-to-understand view of business performance and help them make better decisions using their own verified business data.
@@ -9,310 +9,296 @@
 
 ## 1. Product principles
 
-1. **Decision-first, not chatbot-first.** The Dashboard and COO Copilot must help an owner understand what is happening, why it is happening, what may happen next, and what action to consider.
-2. **One source of truth.** Supabase is the persisted source of truth. Dashboard, Ledger and Copilot use the same authorized transaction data and approved calculation definitions.
-3. **Deterministic facts, AI-enhanced interpretation.** Code calculates financial facts, comparisons, metrics and evidence. AI explains, prioritizes, forecasts where supported, performs RCA and recommends actions from that evidence. AI must not invent or silently alter figures.
-4. **Simple data entry.** Manual and voice entry converge on the same validation and transaction service. A user reviews and confirms AI-extracted entries before saving.
-5. **Global-ready, country-aware.** Currency, locale, time zone, tax jurisdiction and tax rules are explicit business settings. Tax behaviour is implemented through reviewed jurisdiction modules, not guessed by an LLM.
-6. **Security by default.** Every business-data request is authenticated, authorized for the selected business and protected by database RLS.
-7. **Mobile-first PWA.** The app uses a bottom tab bar on mobile, installable PWA capabilities, accessible controls and readable light/dark themes.
-8. **No silent data loss.** Deletes are confirmed, auditable and recoverable where practical. Errors are visible and actionable.
+1. **Decision-first, not chatbot-first:** The Dashboard and COO Copilot exist to help an owner understand what is happening, why it is happening, what may happen next, and what action to consider.
+2. **One source of truth:** Supabase PostgreSQL is the authoritative, persisted source of truth. Dashboard, Ledger, and Copilot use the same authorized transaction data and approved calculation definitions.
+3. **Deterministic facts first, AI-enhanced interpretation second:** Server-side code calculates financial facts, comparisons, metrics, and evidence deterministically before invoking an AI model. AI models interpret the evidence, explain business decisions, prioritize directives, perform root cause analysis (RCA), and explain forecasts. AI must never invent, estimate without evidence, or silently alter figures.
+4. **Unified transaction engine:** Manual and voice entry converge on the same canonical validation rules, shared transaction service, and auditable storage. A user must always review, edit, and explicitly confirm AI-extracted entries before saving.
+5. **Global-ready, jurisdiction-aware:** Currency, locale, timezone, tax jurisdiction, and tax rules are explicit business settings. Tax behaviour is implemented through reviewed, versioned jurisdiction modules, not guessed by an LLM. For India, registration status (GST registered vs non-registered) must be checked before applying GST rules.
+6. **Security and tenant isolation by default:** Every business-data request is authenticated via Supabase Auth, authorized for the selected business, and enforced by database Row Level Security (RLS). Demo datasets are completely isolated across users.
+7. **Mobile-first PWA:** The app uses a bottom navigation bar on mobile, responsive desktop navigation, installable PWA capabilities, accessible controls, and readable light/dark themes.
+8. **No silent data loss:** Deletes are confirmed, auditable, and implemented via soft-deletion where appropriate. Errors are visible and actionable.
+
+---
 
 ## 2. Product scope and navigation
 
-The application has four primary bottom tabs, visually similar to a familiar social-app bottom navigation pattern:
+The application is mobile-first and fully responsive across mobile, tablet, and desktop viewports.
 
-1. **Dashboard**
-2. **Data / Ledger**
-3. **Log Entry**
-4. **COO Copilot**
+### 2.1 Mobile bottom navigation
+The mobile layout features a persistent bottom navigation bar with four primary destinations:
+1. **Dashboard:** At-a-glance financial health, scope-aware KPIs, charts, and prioritized business insights.
+2. **Data / Ledger:** Verification and management surface for persisted Supabase transactions.
+3. **Log Entry:** Rapid manual and voice-driven entry for Sales, Purchases, and Expenses.
+4. **COO Copilot:** Decision intelligence partner providing directives, root cause analysis, conversational Q&A, and voice interactions.
 
-The bottom navigation remains available on mobile. On wider screens, the same destinations may be presented in a responsive navigation rail or sidebar while preserving the four primary destinations.
+### 2.2 Desktop navigation
+On desktop and wide screens, navigation adapts to a responsive sidebar or top navigation rail while preserving the four primary destinations and direct access to business context.
 
-Global controls available from the header or a Business Profile / Settings area:
-- Business identity and currently selected business
-- User/profile menu
-- Business Profile
-- Country / tax jurisdiction
-- Currency and number/date formatting
-- Theme: System / Light / Dark
-- Font-size or readability preference if practical
-- Notification and voice preferences
-- Sign out
+### 2.3 Global controls & Business Profile / Settings
+Accessible from the global header or settings area:
+- Business identity and active business switcher.
+- User profile and authentication status.
+- Business Profile (legal name, industry, operating hours, branches/channels).
+- Regional settings: Country, tax jurisdiction, timezone, locale, currency, date and number formatting.
+- Theme preference: System / Light / Dark.
+- Voice preferences (input language, spoken response toggle).
+- Sign out.
 
-## 3. User journeys
+---
 
-### 3.1 Login and demo entry
+## 3. User journeys and core features
 
-- Provide a clear login page.
-- Provide two clearly labelled demo-data entry options.
-- Demo option 1 must load the required **Meta demo dataset**.
-- Demo option 2 loads a separate sample business dataset.
-- Demo mode must be isolated from real customer data and must not expose sponsor credentials or private provider data.
-- Demo users must be able to explore all four tabs and experience the main workflows.
-- Demo data must be labelled as demo/sample data wherever a user could mistake it for live business data.
-- Define whether demo data is read-only or resettable. Default: demo data is isolated and resettable; destructive operations affect only that demo tenant.
-- Real login uses Supabase Auth. Demo access must not bypass tenant authorization.
+### 3.1 Login and demo dataset entry
+- Clean authentication page powered by Supabase Auth.
+- Two distinct, completely isolated demo dataset options:
+  1. **Meta demo dataset:** Curated sample retail/FMCG dataset showcasing multi-channel operations, peak seasons, and comprehensive COO decision scenarios.
+  2. **Second separate demo dataset:** Distinct alternative business dataset (e.g., service or specialty retail) with independent operational metrics.
+- **Strict demo isolation:** Demo sessions are sandboxed per user via dedicated demo business records (`is_demo = true`, `demo_dataset_key = 'meta_demo'`). Users cannot view, mutate, or mix data with other demo users or production tenants.
+- Demo mode is prominently labelled in the UI banner/header to prevent confusion with live business records.
+- A single-click reset capability restores demo data to its pristine template state without impacting any other tenant.
 
-### 3.2 Dashboard
+---
 
-The owner should understand the state of the business without needing to open the other tabs.
+### 3.2 Scope-aware Dashboard
 
-Required filters:
-- Date range selector with presets: All time, Today, Yesterday, Last 7 days, Last 30 days, Month to Date (MTD).
-- Custom date range: start date and end date.
-- Business activity slicer: All, Sales, Purchase, Expense.
-- Every KPI, chart, comparison and insight on the dashboard must respond consistently to both filters.
-- Define timezone-aware date boundaries using the business timezone.
+The Dashboard provides immediate visibility into business performance without requiring navigation to other tabs.
 
-Required dashboard composition:
-- Header: business name, business identity/context, selected date range, selected activity scope.
-- Five KPI cards. The exact five displayed metrics should be selected based on the chosen scope; for All, a recommended baseline is Sales Revenue, Gross Profit, Operating Expenses, Net Profit and Transaction Count. For Sales/Purchase/Expense scopes, cards must switch to relevant scope-specific measures and must not display misleading metrics.
-- One pie/donut chart for a useful composition view (for example category contribution or expense composition).
-- One bar chart for period/category comparisons.
-- One trend/signal chart showing movement over time.
-- Five additional insight areas:
-  1. **Performance movement:** what increased/decreased and by how much.
-  2. **Category / product Pareto:** top contributors and concentration, including 80/20-style analysis when supported.
-  3. **Period comparison:** previous period, day-to-day, week-to-week, month-to-date and equivalent prior period comparisons.
-  4. **Forecast and outlook:** short-horizon projections with confidence/range and explicit data sufficiency.
-  5. **Alerts and causes:** unusual movements, possible root causes, risks and opportunities with links to supporting evidence.
-- Provide an at-a-glance business health / decision summary with clear supporting metrics.
-- Do not overload the screen: use progressive disclosure, expandable insight details and sensible visual hierarchy. The owner should see the most important decisions first.
+#### Filters and Global Activity Slicer
+- **Date presets:** All, Today, Yesterday, Last 7 Days, Last 30 Days, Month to Date (MTD).
+- **Custom date range:** Explicit start date and end date picker respecting business timezone boundaries.
+- **Global Activity Slicer:** `All` | `Sales` | `Purchase` | `Expense`.
+- **Consistency requirement:** The selected activity slicer consistently alters the definitions and data of **all** 5 KPI cards, charts, and insights in unison.
 
-Dashboard behaviour:
-- The activity slicer changes the entire dashboard scope, not only one chart.
-- All means all transaction types, but metrics must preserve their financial definitions and avoid adding unlike values together.
-- Sales scope focuses on revenue, units, selling price, COGS, gross profit, product/category/customer/channel performance where those dimensions exist.
-- Purchase scope focuses on buying/stock purchases, suppliers, quantities, purchase value and trends where those dimensions exist.
-- Expense scope focuses on operating expenses, category/vendor breakdown, trends and unusual expense movements.
-- Empty data, insufficient history and missing dimensions must be explained instead of fabricating insights.
+#### Scope Behavior & KPI Matrix
 
-### 3.3 Data / Ledger tab
+| Metric / Component | Scope: `All` | Scope: `Sales` | Scope: `Purchase` | Scope: `Expense` |
+|---|---|---|---|---|
+| **KPI Card 1** | **Sales Revenue** (`sales_revenue`) | **Sales Revenue** (`sales_revenue`) | **Total Purchases** (`total_purchases`) | **Operating Expenses** (`operating_expenses`) |
+| **KPI Card 2** | **Gross Profit** (`gross_profit`) | **Gross Profit** (`gross_profit`) | **Procured Units** (`procured_units`) | **Top Expense Category** (`top_expense_category`) |
+| **KPI Card 3** | **Operating Expenses** (`operating_expenses`) | **Gross Margin %** (`gross_margin_pct`) | **Active Suppliers** (`supplier_count`) | **Expense to Revenue %** (`expense_to_revenue_pct`) |
+| **KPI Card 4** | **Net Profit** (`net_profit`) | **Avg Order Value** (`average_order_value`) | **Avg Purchase Value** (`average_purchase_value`) | **Avg Daily Expense** (`average_daily_expense`) |
+| **KPI Card 5** | **Transaction Count** (`transaction_count`) | **Sales Count** (`sales_count`) | **Purchase Count** (`purchase_count`) | **Expense Count** (`expense_count`) |
+| **Donut Chart** | Revenue vs Expense Composition | Category / Product Contribution | Purchases by Supplier or Item | Expense Breakdown by Category |
+| **Bar Chart** | Sales vs Expenses Comparison | Period-over-Period Sales Revenue | Top Suppliers by Procurement Value | Top Expense Categories vs Prior Period |
+| **Trend Chart** | Revenue & Expense Movement | Sales Revenue & Volume Trend | Procurement Cost Trend | Daily/Weekly Operating Expense Movement |
 
-Purpose: a transparent verification surface to check that saved transaction rows are correct.
+#### Visualizations and Insights
+- **Category/product contribution:** Identification of key revenue and margin drivers.
+- **Business performance movement:** Net trajectory (growth/decline) against prior comparable windows.
+- **Forecast and outlook:** Projections with explicit uncertainty ranges and confidence indicators.
+- **Alerts and possible causes:** System-flagged anomalies, cost surges, or margin compressions with linked evidence.
+- **Business health summary:** At-a-glance executive diagnostic score and key ratios.
+- **Prioritized business insights:** High-impact operational observations.
 
-- Show the persisted Supabase `transactions` records in a clean, searchable table.
-- The primary table is the transaction table. Join/display related fields only where useful (such as category, business, creator or item summary).
-- Show transaction ID/reference, date/time, type, description, category, quantity/unit where relevant, selling value, buying cost/COGS where relevant, expense value, status and created/updated timestamps as appropriate.
-- Provide filters for date, transaction type, category and status.
-- Provide search, pagination or virtualized loading, sorting and row detail.
-- Provide a row detail view to inspect the saved values and associated transaction items.
-- Provide clear loading, empty, error and retry states.
-- This is a verification view; avoid making it a second complicated data-entry form.
-- Add only the settings necessary for table display, export, refresh and column visibility. Do not add unrelated settings here.
-- Editing/deleting may be initiated here if permitted, but it must call the shared transaction service and enforce authorization.
+#### Analytical guardrails
+- Peak-hour analysis, festival comparisons, seasonal patterns, and forward-looking forecasts **only appear when sufficient supporting historical data exists** (typically 30–60 days of verified transaction history).
+- When data is insufficient, display transparent data-readiness notices explaining what history is required. Never fabricate unsupported business facts, projections, or calculations.
 
-### 3.4 Log Entry tab
+---
 
-Purpose: fast, understandable manual and voice entry for Sales, Purchase and Expense.
+### 3.3 Data / Ledger
 
-- Separate entry modes or clearly visible type selector: Sale / Purchase / Expense.
-- Manual entry and voice entry must produce the same canonical transaction structure.
-- Dynamic categories must be selectable; allow adding a category if the user's role permits it.
-- Keep forms short and reveal conditional fields only when relevant.
-- Validate date, currency, quantities, prices, totals, tax fields and required dimensions.
-- Show a live calculation preview before save.
+The Data / Ledger tab serves as the transparent verification and record management surface for all persisted transaction records.
 
-**Sale entry preview**
-- Product/service, quantity and unit
-- Selling price per unit and selling total
-- Buying cost / COGS per unit and total when known
-- Gross profit and gross margin when enough data exists
-- Discount, tax and payment/channel fields when applicable
-- Make clear whether a profit figure is provisional because buying cost is missing.
+- Primary data source is the Supabase `transactions` table (with associated `transaction_items`).
+- **Core capabilities:** Full-text search, multi-field filtering (date, transaction type, category, status), column sorting, compound cursor pagination, and detailed slide-out/modal view.
+- **Displayed fields:**
+  - Transaction ID and human-readable reference code (e.g., `TXN-2026-0042`).
+  - Date and time (rendered in business timezone).
+  - Transaction type: Sale, Purchase, Expense.
+  - Description and counterparty (customer, supplier, payee).
+  - Category name.
+  - Quantity and unit (where applicable).
+  - Selling value (`total_minor` for sales).
+  - Buying cost / COGS (`buying_cost_total_minor` where applicable for sales).
+  - Expense value (`total_minor` for expenses).
+  - Status (e.g., `confirmed`, `draft`, `voided`).
+  - Created and updated timestamps.
+- **Shared Transaction Service:** Edit and soft-delete/void operations are mediated strictly through the shared transaction service.
+- **Auditability:** Every mutation or deletion writes an immutable record to `audit_logs` capturing user identity, timestamp, request ID, before data, and after data.
 
-**Purchase entry preview**
-- Product/item or description, quantity, unit
-- Buying price per unit and purchase total
-- Supplier and stock-related fields when applicable
-- Tax components where configured for the business jurisdiction
+---
 
-**Expense entry preview**
-- Expense category, description, amount
-- Vendor/payee, date, payment method and tax fields when applicable
+### 3.4 Log Entry
 
-- Show the user the calculated result before saving.
-- Save only after explicit user confirmation.
-- Provide edit and delete with confirmation; use audit trail/soft-delete where appropriate.
-- On success, update Ledger and Dashboard from persisted data. Copilot must use the new transaction after the data refresh/invalidation completes.
-- Never let the AI extraction model directly write to Supabase.
+Provides rapid, intuitive transaction logging with separate flows for Sale, Purchase, and Expense, supporting dynamic category selection and creation.
 
-### 3.5 COO Copilot tab
+#### Manual entry workflows
+- **Sale:** Capture selling price, buying cost / COGS (when known), quantity, unit, dynamic category, date/time, customer/channel, and tax. Automatically calculates gross profit and gross margin preview before save. Clearly flags provisional margins when buying cost is absent.
+- **Purchase:** Capture item/stock description, quantity, unit, buying price per unit, total purchase value, supplier, date, and payment/tax details. Keeps standalone inventory purchases strictly separated from sales COGS.
+- **Expense:** Capture expense category, description, expense amount, vendor/payee, date, payment method, and applicable tax details.
 
-This is the signature product experience and must feel like a business decision partner, not a generic chatbot.
+#### Voice entry workflow
+Voice and manual entry converge on the exact same canonical transaction service and validation rules:
+1. Browser records user audio via Web Audio / MediaRecorder API.
+2. Audio payload is sent to the backend and transcribed via **Meta Muse Voice Transcribe 1.0** (Meta API).
+3. Transcribed text is sent to **Muse Spark Contributor** (Meta API) for structured extraction.
+4. The extraction model returns a structured JSON draft classifying transaction type, items, quantities, units, amounts, and category hints.
+5. User reviews, edits, and verifies the structured draft in the UI.
+6. User provides explicit confirmation.
+7. Shared transaction service validates constraints, recalculates totals deterministically, and saves to Supabase.
+8. Persisted transaction immediately updates the Ledger and Dashboard, and becomes available for Copilot analysis.
 
-Required capabilities:
-- Executive Directives section with three prioritized, evidence-backed directives.
-- Interactive chat with follow-up questions and conversation history.
-- Understand questions in natural language, including supported local languages and mixed Tamil/English where supported by the selected models.
-- Answer the question actually asked, respect timeframe and business scope, and explain uncertainty.
-- Voice question input and **spoken voice answer are mandatory product requirements**, not optional.
-- Support interrupt/retry/replay controls for voice interactions where feasible.
-- Provide citations/evidence references to relevant dashboard metrics or transaction groups inside the app.
-- Keep a clear separation between facts, interpretation, forecast, possible causes and recommended actions.
+**Strict guardrails:**
+- Never stream raw audio directly to the structured extraction model.
+- Never write AI-generated drafts directly to Supabase without explicit user confirmation.
 
-Required COO intelligence:
-- Business performance summary
-- Root Cause Analysis (RCA)
-- Pareto / concentration analysis
-- Day-to-day, week-to-week, month-to-date and equivalent-period comparisons
-- Seasonal and festival-period comparisons where historical data and a relevant calendar/jurisdiction are available
-- Peak hours / day-of-week patterns where timestamps and sufficient transaction volume exist
-- Forecasting with ranges, assumptions and confidence / data sufficiency
-- Anomaly detection
-- Sales, product, category, channel, customer and supplier analysis where those fields exist
-- Expense control and margin analysis
-- Action recommendations ranked by impact, urgency and confidence
-- Follow-up questions that preserve the previous question's timeframe, scope and entities unless the user changes them
-- Outcome tracking for recommendations can be added after the core decision loop is stable
+---
 
-Rules:
-- Never claim a festival effect, peak hour or root cause without supporting data.
-- Distinguish correlation from causation.
-- Every important recommendation should say why, expected impact if estimable, confidence/data limitations and a practical next step.
-- If the data is insufficient, say what is missing and avoid false precision.
-- Store chat history and structured intent/debug context, excluding secrets and unnecessary personal data.
+### 3.5 COO Copilot
 
-### 3.6 Business Profile and Settings
+COO Copilot is a dedicated decision-support intelligence partner designed to assist business operators.
 
-Business Profile must capture:
-- Business name, logo and contact/business identity details
-- Country and tax jurisdiction (state/province/region where relevant)
-- Currency
-- Business timezone
-- Locale, date and number formats
-- Financial year start
-- Industry/business type
-- Optional business operating hours and weekly working days
-- Optional business channels, branches and locations
+#### Operating model
+- **Evidence first:** Code calculates verified metrics, variance, trends, and anomalies deterministically from Supabase on the server.
+- **AI interpretation:** The LLM receives a compact, verified evidence payload and provides clear business analysis, root cause explanations, and strategic direction.
+- **Strict truthfulness:** The AI must never perform ad-hoc arithmetic or invent data.
 
-Settings:
-- Currency selector, with formatting applied consistently across the app.
-- Theme selector: System / Light / Dark.
-- Readable font family, contrast and sizing; ensure charts and tables remain legible in both themes.
-- Voice language and playback preferences.
-- User and business-member management based on role.
-- Tax configuration and effective dates.
+#### Key capabilities
+- **Executive Directives:** Three prioritized, evidence-backed operational directives updated on data changes.
+- **Direct business Q&A:** Answers natural language questions on margins, revenue drops, cost leaks, and volume shifts.
+- **Contextual follow-up:** Preserves active timeframes, filters, and business entities across conversational turns.
+- **Root Cause Analysis (RCA):** Deconstructs margin compressions or revenue dips into volume, pricing, product mix, or supplier cost factors.
+- **Pareto analysis (80/20):** Evaluates product and customer concentration risks.
+- **Period comparisons:** Day-over-day, week-over-week, month-to-date, and prior-year comparisons.
+- **Trends and anomalies:** Highlights unexpected expense spikes or demand slowdowns.
+- **Voice interaction:** Voice question input via **Meta Muse Voice Transcribe 1.0** and spoken voice output via **Meta MMS TTS** (`facebook/mms-tts-eng`). Spoken answers and voice input are mandatory product features.
+- **Intent and debug logs:** Detailed server-side logging of resolved intent, evidence references, model latency, and validation status to diagnose discrepancies, with automated PII and credential scrubbing before persistence.
 
-### 3.7 Global tax and jurisdiction design
+---
 
-- Country selection must choose a jurisdiction configuration, not ask the AI to invent tax rules.
-- For India, the application may present GST as the applicable tax framework and ask for required details such as state, GST registration status and relevant registration/tax settings. Do not assume every Indian business is GST-registered or apply one tax rate to every item.
-- For other countries, use a versioned country/jurisdiction tax module with effective dates, tax types, rates, exemptions and required business configuration.
-- Keep tax calculation deterministic and auditable.
-- Show a clear “needs configuration / verify with a qualified tax professional” state where rules or business status are unknown.
-- Do not present the app as a substitute for official tax advice or filing compliance.
-- Tax modules must be reviewed and updated when laws change; model knowledge is not the tax source of truth.
+## 4. Finalised runtime model mapping
 
-## 4. Technology architecture
+All models called by the application at runtime must be Meta models. Third-party inference providers are permitted only when hosting an authorized Meta model checkpoint.
 
-Initial proposed stack:
-- Frontend: Next.js, React, TypeScript
-- Styling: Tailwind CSS
-- Backend: Next.js server routes / server-side services
-- Database and authentication: Supabase PostgreSQL + Supabase Auth
-- Authorization: server-side business membership checks + PostgreSQL RLS
-- Hosting: Vercel (or another approved HTTPS host)
-- PWA: web app manifest, icons, service worker/offline shell and installability
-- Version control: GitHub
+| Product capability | Model checkpoint | Inference provider | Role & Allocation | Fallback order |
+|---|---|---|---|---|
+| **COO Copilot LLM** | Meta Muse Spark 1.3 Contributor | Meta API | Primary chat reasoning | **Primary** |
+| | Muse Spark Open 1026 | Baseten | First fallback ($100 credit) | **Fallback 1** |
+| | Muse Glimmer 30B | Fireworks | Final fallback ($1 credit) | **Fallback 2** |
+| **Executive Directives** | Meta Muse Spark 1.3 Contributor | Meta API | Strategic directives (w/ Baseten FB) | Single source |
+| **Log Entry Voice STT** | Meta Muse Voice Transcribe 1.0 | Meta API | Audio transcription | Single source |
+| **Log Entry Structured Extraction** | Muse Spark Contributor | Meta API | Text to structured draft | Single source (Meta API) |
+| **Copilot Voice Input (STT)** | Meta Muse Voice Transcribe 1.0 | Meta API | Spoken question transcription | Single source |
+| **Copilot Voice Output (TTS)** | Meta MMS TTS (`facebook/mms-tts-eng`) | Separately provisioned inference endpoint | English spoken response | Single source (Endpoint to be provisioned) |
 
-Use server-only modules for provider API keys. No provider key or Supabase service-role key may be exposed to browser code.
+### Strict routing and fallback rules
+- **Exact fallback order:** COO Copilot chat strictly executes Primary (Meta API) $\rightarrow$ Fallback 1 (Baseten) $\rightarrow$ Fallback 2 (Fireworks).
+- **Fallback triggers:** Connection failures, network timeouts (>8000ms), upstream rate limits, or 5xx provider outages. Disagreement in model opinion is never a fallback condition.
+- **Streaming integrity:** Fallback is only permissible before the first token is emitted to the client. If a stream fails mid-generation, terminate cleanly and surface a retry prompt with `STREAM_INTERRUPTED`; never splice tokens from a secondary model into an existing stream.
+- **No non-Meta models:** OpenAI, Anthropic, Google, DeepSeek, Whisper, or other non-Meta runtime models are strictly prohibited. Faster-whisper and Chatterbox are not permitted.
 
-## 5. AI provider architecture
+---
 
-Locked intended assignments:
-- **Coding agent:** Muse Code using Meta Muse Spark 1.3 Contributor.
-- **Primary Copilot chat:** Fireworks `accounts/fireworks/models/deepseek-v3p1` (DeepSeek V3.1).
-- **Copilot chat fallback 1:** Meta Muse Spark 1.3 Contributor.
-- **Copilot chat fallback 2:** Baseten Muse Spark Open 1026.
-- **Executive Directives:** Baseten Muse Spark Open 1026.
-- **Voice input for Copilot:** Meta Muse Voice Transcribe 1.0.
-- **Voice input for Log Entry:** Modal-hosted faster-whisper.
-- **Voice transaction extraction:** Baseten Muse Spark Open 1026.
-- **Copilot text-to-speech:** separate TTS adapter/provider. This is mandatory for the product; select and configure a provider before the Copilot voice-answer milestone. Do not assume Meta Voice Transcribe provides TTS.
+## 5. Architectural layers & system boundaries
 
-Provider rules:
-- All calls occur server-side.
-- Build a provider adapter interface so models can be changed without rewriting Copilot business logic.
-- Use the same server-built evidence and conversation context across chat fallbacks.
-- Fallback only on provider errors, timeouts, rate limits or unavailable service; not because two models disagree.
-- If streaming fails before the first token, try the next provider.
-- If streaming fails after partial text has been sent, do not append another model's answer. Show a restart/retry action.
-- Limit tokens and context; avoid sending the entire database or all analytics.
-- Cache Executive Directives and regenerate only on defined triggers.
-- Track provider, model, latency, token usage, error class and estimated cost without logging credentials.
-- Sponsor credits are hackathon-only; implement graceful provider failure and make it easy to replace a provider after the hackathon.
+The application enforces strict separation of concerns across distinct architectural layers:
 
-## 6. Core data and calculation rules
+```text
++-----------------------------------------------------------------------------------+
+|  1. Presentation & Client Layer (Next.js App Router / React / TypeScript / PWA)   |
+|  - Mobile Bottom Tab Bar (Dashboard, Ledger, Log Entry, Copilot)                  |
+|  - Desktop Responsive Navigation Sidebar                                          |
+|  - Theme Controller (System / Light / Dark) & PWA Service Worker Shell            |
+|  - Client State & Cache Management (React Query / SWR / Context)                  |
++-----------------------------------------------------------------------------------+
+                                         |
+                            HTTPS / REST  |  Server-Sent Events (SSE)
+                                         v
++-----------------------------------------------------------------------------------+
+|  2. API & Server Routes Layer (Next.js Server Handlers: /api/...)                 |
+|  - Route Handlers & Zod Schema Validation                                         |
+|  - Rate Limiting Controller (per-business & per-user thresholds)                  |
+|  - SSE Streaming Controller with pre-token failover orchestration                 |
+|  - Safe Error Envelope Normalization                                              |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+|  3. Server-Side Business Context & Security Layer                                 |
+|  - getAuthorizedBusinessContext(req): Validates Supabase Auth JWT (auth.uid())     |
+|  - Verifies business_members active status & RBAC role (owner, admin, editor, etc)|
+|  - Loads authoritative business settings: timezone, currency, tax jurisdiction    |
+|  - Rejects unauthorized cross-tenant requests before hitting database or models   |
++-----------------------------------------------------------------------------------+
+                                         |
+                     +-------------------+-------------------+
+                     |                                       |
+                     v                                       v
++-----------------------------------------+   +-------------------------------------+
+|  4. Business Services Layer             |   |  5. Deterministic Intelligence Layer|
+|  - Shared Transaction Service:          |   |  - Scope-Aware Aggregator:          |
+|      * Server recalculation of totals   |   |      * Calculations for all scopes  |
+|      * Decimal-safe integer minor math  |   |  - Evidence Builder:                |
+|      * Sale COGS vs Purchase separation |   |      * Verified facts & KPI delta   |
+|      * Optimistic locking (version)     |   |  - Variance, Pareto & Anomaly Engine|
+|      * Soft-delete & Audit logging      |   |  - Data-Sufficiency Guardrails      |
++-----------------------------------------+   +-------------------------------------+
+                     |                                       |
+                     | Direct SQL / RLS                      | Compact Evidence
+                     v                                       v
++-----------------------------------------+   +-------------------------------------+
+|  6. Database & Persistence Layer        |   |  7. AI Provider Adapters Layer      |
+|  (Supabase Cloud PostgreSQL)            |   |  - Meta API Adapter:                |
+|  - Row Level Security (RLS) on all      |   |      * Muse Spark 1.3 Contributor   |
+|    tenant tables (business_id)          |   |      * Muse Voice Transcribe 1.0    |
+|  - Transactions & Items                 |   |  - Baseten Adapter:                 |
+|  - Categories, Profiles, Settings       |   |      * Muse Spark Open 1026         |
+|  - Chat Sessions & Messages             |   |  - Fireworks Adapter:               |
+|  - copilot_intent_logs (PII redacted)   |   |      * Muse Glimmer 30B             |
+|  - audit_logs (immutable change history)|   |  - Meta Contributor Adapter:        |
+|  - Demo tenant partitioned schemas      |   |      * Muse Spark Contributor     |
+|                                         |   |  - Meta MMS TTS Inference Adapter:  |
+|                                         |   |      * facebook/mms-tts-eng (TTS)   |
++-----------------------------------------+   +-------------------------------------+
+```
 
-- Supabase is the persisted source of truth.
-- A transaction header may have zero or more typed line items depending on transaction type and business workflow.
-- Support non-item expense/events where appropriate.
-- Define canonical types for Sale, Purchase and Expense.
-- A sale's COGS is the buying cost associated with the goods sold; a standalone stock purchase is a separate Purchase transaction. Never merge these concepts.
-- Use decimal-safe money handling (integer minor units or a suitable decimal strategy); never rely on binary floating point for financial totals.
-- Store currency code on the business and, where required, on transactions. Define currency conversion separately; never sum different currencies without an explicit conversion policy.
-- Store timestamps in UTC and interpret/report them using the business timezone.
-- Tax values must preserve tax type, rate, taxable base, tax amount, jurisdiction and effective rule/version when applicable.
-- All metrics must have documented definitions and tests.
-- Dashboard and Copilot must consume the same approved analytics contracts.
+### Communication Protocols:
+- **Client to Server:** HTTPS REST for all data and transaction operations; Server-Sent Events (SSE) for Copilot streaming answers. WebSockets are deliberately omitted as real-time bi-directional streaming is not required.
+- **Server to Database:** PostgreSQL protocol over connection pool with Row Level Security.
+- **Server to AI Providers:** Authenticated HTTPS REST / RPC with streaming response consumption.
 
-## 7. PWA architecture
+---
 
-Required:
-- Installable manifest with app name “AI Powered COO”, short name, icons, theme/background colors and start URL.
-- Responsive mobile-first UI with bottom navigation.
-- Service worker for app shell/static asset caching and safe update lifecycle.
-- Offline indicator and graceful offline state.
-- Do not silently queue financial writes unless an explicit conflict-safe offline transaction queue is implemented and tested.
-- Voice capture and AI features require network connectivity; show a clear offline message.
-- Authentication and sensitive business data must not be cached in a way that leaks across users or devices.
-- HTTPS is required for production PWA and microphone access.
-- Test install/update behaviour on Android Chrome and at least one desktop browser.
+## 6. Business Profile and jurisdiction tax design
 
-## 8. Security and privacy
+### Business Profile & Regional Configuration
+- Business Name, Legal Name, Logo, Industry, Business Type.
+- Operating hours, active working days, optional branch/channel identifiers.
+- Currency code (ISO 4217) and number/date formatting locale.
+- Business timezone (IANA string, e.g., `Asia/Kolkata`, `America/New_York`).
+- Financial year start month (e.g., April for India/UK, January for US).
 
-- Supabase Auth identifies the user.
-- Server verifies the user's membership and role for the selected business on every protected request.
-- RLS policies enforce tenant boundaries even if a route has a bug.
-- Never trust a business ID, role, amount, metric or business context supplied by the client without server validation.
-- Keep provider keys and service-role credentials in server-side environment variables only.
-- Never log API keys, access tokens, raw secrets or unnecessary audio.
-- Define audio retention/deletion. Delete temporary audio after transcription unless the user explicitly enables a justified retention feature.
-- Protect chat history and intent logs by tenant and user/business permissions.
-- Audit sensitive mutations and deletions.
-- Use least privilege and rate limits on expensive AI/voice endpoints.
+### Jurisdiction-aware tax rules
+- Tax calculations must be deterministic, auditable, and driven by versioned code modules rather than AI estimates.
+- **India path:** Explicitly asks whether the business is **GST registered** before enabling GSTIN fields, HSN/SAC codes, and CGST/SGST/IGST breakdown. Non-registered businesses operate without mandatory tax overhead. Rates are item/category specific, not a flat assumption.
+- **Global jurisdictions:** Supports country-specific rule modules with effective start/end dates.
+- **Currency immutability:** Updating the business currency setting only changes display defaults for future records; historical transaction currency codes and minor units remain immutable.
 
-## 9. Reliability, observability and recovery
+---
 
-- Standard error format for API routes.
-- Loading, empty, offline, unauthorized, validation and provider-failure UI states.
-- Retry only safe/idempotent operations.
-- Use request IDs and structured server logs.
-- Track transaction creation/update/delete, provider usage and AI validation outcomes.
-- Do not expose stack traces or secrets to the user.
-- Use database constraints and server-side validation as well as frontend validation.
+## 7. Security, tenant isolation, and auditability
 
-## 10. Quality gates and acceptance criteria
+1. **Authentication:** Managed exclusively via Supabase Auth.
+2. **Multi-tenancy:** Every customer entity is tied to a `business_id`. Row Level Security (RLS) policies enforce tenant isolation at the PostgreSQL level (`is_business_member(business_id)`).
+3. **Demo dataset isolation:** Demo datasets are partitioned by assigned demo tenant IDs or isolated session tenants. Negative RLS tests guarantee zero cross-tenant read/write leakage.
+4. **Credential safety:** Provider API keys, service-role keys, and inference endpoints reside exclusively in server-side environment variables. No secrets are ever exposed in client bundles.
+5. **Auditing & Soft Deletion:** Critical transaction mutations and deletions are soft-deleted (`deleted_at`) and write snapshot records to `audit_logs`.
+6. **Copilot Query Redaction:** Before storing questions in `copilot_intent_logs`, automated server-side scrubbing strips PANs, account numbers, credentials, and tax IDs.
+7. **Ephemeral Audio:** Audio recorded for voice transcription is processed in memory or stored in ephemeral storage, deleted immediately following transcription.
 
-The app is not complete until these journeys work end-to-end:
+---
 
-1. Demo login → Meta demo dataset → all four tabs.
-2. Real login → only authorized business data.
-3. Manual Sale → Supabase → Ledger → Dashboard → Copilot evidence.
-4. Manual Purchase → correct purchase figures and no accidental COGS conflation.
-5. Manual Expense → correct expense figures and category.
-6. Edit/delete → persisted result, audit trail and refreshed dashboard.
-7. Log Entry voice → Modal transcription → Baseten extraction → review → confirmation → same transaction service → Supabase.
-8. Copilot text question → evidence → Fireworks DeepSeek V3.1 → streaming answer → history.
-9. Fireworks failure → Meta fallback; Meta failure → Baseten fallback, with no mixed partial response.
-10. Copilot voice question → Meta transcription → same chat flow → TTS spoken answer.
-11. Dashboard filters and slicer consistently affect all relevant cards/charts/insights.
-12. Tax and currency settings affect display and configured deterministic calculations correctly.
-13. Tenant isolation passes negative tests.
-14. PWA installs, updates and behaves safely offline.
+## 8. Quality gates and acceptance criteria
 
-## 11. Delivery constraints
+The product meets Phase 0 architectural standards when all conditions are fulfilled:
 
-Build in vertical slices and keep the app runnable after each phase. Prefer a complete, working core over many disconnected screens. Do not weaken validation or security to make a demo appear successful. Use demo data to showcase advanced intelligence, but label demo data clearly.
+1. **Demo & Auth:** Clean login flow; both Meta demo dataset and second demo dataset launch into completely isolated environments.
+2. **Navigation:** Responsive shell operates smoothly with bottom tab bar on mobile and sidebar on desktop.
+3. **Data Integrity:** Manual Sale, Purchase, and Expense entries validate through the shared transaction service; Ledger reflects saved Supabase records with proper COGS separation.
+4. **Dashboard Consistency:** Global Activity Slicer (`All`, `Sales`, `Purchase`, `Expense`) and date presets reliably update all 5 KPI cards, charts, and insights in unison.
+5. **Log Entry Voice:** Audio $\rightarrow$ Meta Muse Voice Transcribe 1.0 $\rightarrow$ Muse Spark Contributor $\rightarrow$ structured draft $\rightarrow$ user review $\rightarrow$ confirmed save to Supabase.
+6. **Copilot Intelligence:** Server generates verified evidence; Meta Muse Spark 1.3 Contributor answers Q&A; Baseten (Muse Spark Open 1026) and Fireworks (Muse Glimmer 30B) activate reliably on simulated upstream failure.
+7. **Copilot Voice Q&A:** Voice question transcribed by Meta Voice Transcribe 1.0; answer generated and spoken aloud via Meta MMS TTS (`facebook/mms-tts-eng`).
+8. **Jurisdiction Settings:** India GST flow validates registration status; tax calculations remain deterministic; historical currencies remain uncorrupted.
+9. **Zero Non-Meta Runtime Models:** All runtime model invocations strictly verify against approved Meta checkpoints.
