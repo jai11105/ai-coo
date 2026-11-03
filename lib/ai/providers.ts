@@ -75,6 +75,16 @@ function shouldSendMetaReasoningEffort(disabled?: boolean): boolean {
   return Boolean(val && val !== "off" && val !== "none" && val !== '""' && val !== "''");
 }
 
+export const FIREWORKS_REASONING_EFFORT = (process.env.FIREWORKS_REASONING_EFFORT ?? "low").trim();
+
+function shouldSendFireworksReasoningEffort(disabled?: boolean): boolean {
+  if (disabled) return false;
+  const val = FIREWORKS_REASONING_EFFORT.toLowerCase();
+  return Boolean(val && val !== "off" && val !== "none" && val !== '""' && val !== "''");
+}
+
+export const FIREWORKS_TIMEOUT_MS = Number(process.env.FIREWORKS_TIMEOUT_MS) || 25000;
+
 export async function postChatCompletions(opts: {
   base: string; apiKey: string; model: string;
   messages: ChatMsg[]; maxTokens: number; timeoutMs: number;
@@ -110,7 +120,8 @@ export async function postChatCompletions(opts: {
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 400);
     if (res.status === 400 && /reasoning_effort/i.test(body) && !opts.disableReasoningEffort && opts.reasoningEffort) {
-      console.log(`[meta] HTTP 400 reasoning_effort rejected (${body}) — retrying once without reasoning_effort`);
+      const tag = opts.base.includes("fireworks") ? "fireworks" : "meta";
+      console.log(`[${tag}] HTTP 400 reasoning_effort rejected (${body}) — retrying once without reasoning_effort`);
       return postChatCompletions({
         ...opts,
         reasoningEffort: undefined,
@@ -170,14 +181,15 @@ export async function callMetaStandard(system: string, user: string, maxTokens =
  *  ~8.056s for a valid fallback response; Meta primary/retry stay at 8s).
  *  Never presented as Baseten analysis.
  * Default 1200 tokens (same reasoning-budget reason as primary). */
-export async function callFireworksFallback(system: string, user: string, maxTokens = 1200, timeoutMs = 15000): Promise<ModelResult> {
+export async function callFireworksFallback(system: string, user: string, maxTokens = 1500, timeoutMs = FIREWORKS_TIMEOUT_MS): Promise<ModelResult> {
   const c = aiConfig();
   if (!c.fireworksApiKey) throw new Error("FIREWORKS_API_KEY is not configured on the server.");
+  const effort = shouldSendFireworksReasoningEffort() ? FIREWORKS_REASONING_EFFORT : undefined;
   const { FIREWORKS_FALLBACK_ROLE } = await import("./prompts");
   const r = await postChatCompletions({
     base: c.fireworksBaseUrl, apiKey: c.fireworksApiKey, model: c.fireworksModelId,
     messages: [{ role: "system", content: `${system}\n\n${FIREWORKS_FALLBACK_ROLE}` }, { role: "user", content: user }],
-    maxTokens, timeoutMs,
+    maxTokens, timeoutMs, reasoningEffort: effort,
   });
   if (!r.text) throw new Error("Fallback model returned an empty response.");
   return { text: r.text, provider: "fireworks-fallback", model: c.fireworksModelId, inputTokens: r.inputTokens, outputTokens: r.outputTokens, finishReason: r.finishReason, truncated: r.truncated };
@@ -272,7 +284,8 @@ async function postChatWithTools(opts: {
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 400);
     if (res.status === 400 && /reasoning_effort/i.test(body) && !opts.disableReasoningEffort && opts.reasoningEffort) {
-      console.log(`[meta] HTTP 400 reasoning_effort rejected (${body}) — retrying once without reasoning_effort`);
+      const tag = opts.base.includes("fireworks") ? "fireworks" : "meta";
+      console.log(`[${tag}] HTTP 400 reasoning_effort rejected (${body}) — retrying once without reasoning_effort`);
       return postChatWithTools({
         ...opts,
         reasoningEffort: undefined,
@@ -318,11 +331,12 @@ export async function callMetaStandardWithTools(messages: ToolMsg[], tools: Copi
   return { text: r.text, provider: "meta", model: c.metaModelId, inputTokens: r.inputTokens, outputTokens: r.outputTokens, toolCalls: r.toolCalls, finishReason: r.finishReason, truncated: r.truncated };
 }
 /** Slice 7: Fireworks fallback with tools (same loop driver, same guards).
- * Default 1200 (same reasoning-budget reason as primary). */
-export async function callFireworksWithTools(messages: ToolMsg[], tools: CopilotToolDefinition[], maxTokens = 1200, timeoutMs = 15000): Promise<ToolsResult> {
+ * Default 1500 (reasoning model burns hidden tokens; keep fallback max_tokens >= 1500). */
+export async function callFireworksWithTools(messages: ToolMsg[], tools: CopilotToolDefinition[], maxTokens = 1500, timeoutMs = FIREWORKS_TIMEOUT_MS): Promise<ToolsResult> {
   const c = aiConfig();
   if (!c.fireworksApiKey) throw new Error("FIREWORKS_API_KEY is not configured on the server.");
-  const r = await postChatWithTools({ base: c.fireworksBaseUrl, apiKey: c.fireworksApiKey, model: c.fireworksModelId, messages, tools, maxTokens, timeoutMs });
+  const effort = shouldSendFireworksReasoningEffort() ? FIREWORKS_REASONING_EFFORT : undefined;
+  const r = await postChatWithTools({ base: c.fireworksBaseUrl, apiKey: c.fireworksApiKey, model: c.fireworksModelId, messages, tools, maxTokens, timeoutMs, reasoningEffort: effort });
   return { text: r.text, provider: "fireworks-fallback", model: c.fireworksModelId, inputTokens: r.inputTokens, outputTokens: r.outputTokens, toolCalls: r.toolCalls, finishReason: r.finishReason, truncated: r.truncated };
 }
 

@@ -18,7 +18,9 @@ import { aiConfig, PROMPT_VERSION, providerStatus } from "./config";
 // budget), never a same-budget retry on the same provider.
 const budgetFor = (intent: string): { meta: number; fireworks: number } => {
   const t = maxTokensForIntent(intent);
-  return { meta: t, fireworks: t };
+  const isGreeting = intent === "greeting" || intent === "casual";
+  const fireworks = isGreeting ? t : Math.max(1500, t);
+  return { meta: t, fireworks };
 };
 import { appendTurn, getConversation, relevantHistory, updateState } from "./context";
 import type { ActivePriority, AnalysisType } from "./context";
@@ -38,7 +40,7 @@ function addDaysIso(iso: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 import { buildSpecialistPrompt, buildStandardPrompt, priorityCandidatesBlock } from "./prompts";
-import { callFireworksFallback, callFireworksWithTools, callMetaStandard, callMetaStandardWithTools, isRetryableProviderError } from "./providers";
+import { callFireworksFallback, callFireworksWithTools, callMetaStandard, callMetaStandardWithTools, FIREWORKS_TIMEOUT_MS, isRetryableProviderError } from "./providers";
 import type { ToolMsg } from "./providers";
 import { MAX_TOOL_ROUNDS, TOOL_LOOP_TIMEOUT_MS, maxTokensForIntent, toolsForIntent } from "./tool-defs";
 import { execCopilotTool, toolResultPayload } from "./tool-run";
@@ -735,10 +737,11 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
       rounds += 1;
       const remainingLoopMs = TOOL_LOOP_TIMEOUT_MS - (Date.now() - startedLoop);
       const roundTimeoutMs = Math.max(1000, Math.min(20000, remainingLoopMs));
+      const fwRoundTimeoutMs = Math.max(1000, Math.min(FIREWORKS_TIMEOUT_MS, remainingLoopMs));
       const maxTokens = kind === "meta" ? budgetFor(frozenIntent).meta : budgetFor(frozenIntent).fireworks;
       const r = kind === "meta"
         ? await callMetaStandardWithTools(messages, toolsForIntent(frozenIntent, question), maxTokens, roundTimeoutMs)
-        : await callFireworksWithTools(messages, toolsForIntent(frozenIntent, question), maxTokens);
+        : await callFireworksWithTools(messages, toolsForIntent(frozenIntent, question), maxTokens, fwRoundTimeoutMs);
       provider = r.provider; model = r.model;
       inputTokens = (inputTokens ?? 0) + (r.inputTokens ?? 0);
       outputTokens = (outputTokens ?? 0) + (r.outputTokens ?? 0);
@@ -771,7 +774,7 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
       const finBudget = budgetFor(frozenIntent);
       const fin = kind === "meta"
         ? await callMetaStandard(`${system}\nAnswer from verified tool results only.`, messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n").slice(-6000) + "\nCompose the final owner-facing answer. Never invent figures.", finBudget.meta)
-        : await callFireworksFallback(`${system}\nAnswer from verified tool results only.`, messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n").slice(-6000) + "\nCompose the final owner-facing answer. Never invent figures.");
+        : await callFireworksFallback(`${system}\nAnswer from verified tool results only.`, messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n").slice(-6000) + "\nCompose the final owner-facing answer. Never invent figures.", finBudget.fireworks, FIREWORKS_TIMEOUT_MS);
       // FINAL FIX (Failure 2): a truncated final-compose is partial output —
       // never present it as complete. Route to fallback/degraded instead.
       if (fin.truncated === true && fin.text) {
@@ -912,17 +915,17 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
     // Slice 4+5: the SAME Standard instructions go to the reasoning fallback,
     // including the specialist memo when present (fallback interprets it the
     // same way; it is NEVER presented as Baseten analysis).
-    // Slice 7: fallback runs the SAME tool loop through Fireworks with-tools.
+    // Fallback skips the tool loop: prompt already carries verified evidence (and specialist memo when present).
+    // A single direct compose call avoids several sequential 25s rounds and stays within the client deadline.
     const fbMemoSuffix = memoSuffixFor(true);
     const t0 = Date.now();
     try {
-      if (useToolLoop) {
-        const looped = await runLoop("fireworks", built.system, built.user + fbMemoSuffix);
-        if (!looped || !looped.text) throw new Error("Fallback model returned an empty response.");
-        result = looped;
-      } else {
-        result = await callFireworksFallback(built.system, built.user + fbMemoSuffix);
-      }
+      result = await callFireworksFallback(
+        built.system,
+        built.user + fbMemoSuffix,
+        budgetFor(frozenIntent).fireworks,
+        FIREWORKS_TIMEOUT_MS,
+      );
       // FINAL FIX (Failure 2): truncated fallback content is partial — never
       // present it as a complete answer. Throw into the degraded path.
       if (result && result.truncated === true && result.text) {
@@ -940,6 +943,7 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
           latencyMs: Date.now() - t0,
         }),
       );
+      stage("fireworks_fallback", "fireworks", cfg.fireworksModelId, FIREWORKS_TIMEOUT_MS, Date.now() - t0, null, 200);
     } catch (e) {
       fallbackError = e instanceof Error ? e.message : "fallback failed";
       providerAttempts.push(
@@ -953,6 +957,7 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
           error: e,
         }),
       );
+      stage("fireworks_fallback", "fireworks", cfg.fireworksModelId, FIREWORKS_TIMEOUT_MS, Date.now() - t0, e);
     }
   }
 
