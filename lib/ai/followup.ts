@@ -280,7 +280,7 @@ export async function resolveFollowup(opts: {
       stateSummary: summarizeForResolver(opts.state),
       history: opts.state.turns.slice(-6).map((t) => `${t.role}: ${t.content.slice(0, 240)}`),
     });
-    const r = await callMetaStandard(prompt.system, prompt.user, 400, opts.modelTimeoutMs ?? 8000);
+    const r = await callMetaStandard(prompt.system, prompt.user, 1000, opts.modelTimeoutMs ?? 8000);
     const valid = validateResolution(extractJson(r.text), opts.state);
     if (valid) return valid;
     return fallback;

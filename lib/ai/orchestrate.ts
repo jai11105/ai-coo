@@ -43,7 +43,16 @@ import type { ToolMsg } from "./providers";
 import { MAX_TOOL_ROUNDS, TOOL_LOOP_TIMEOUT_MS, maxTokensForIntent, toolsForIntent } from "./tool-defs";
 import { execCopilotTool, toolResultPayload } from "./tool-run";
 
-import { basetenConfigured, basetenToolDefinitions, callBasetenSpecialistWithTools, BASETEN_MAX_TOKENS_DEFAULT } from "./baseten";
+import {
+  basetenConfigured,
+  basetenToolDefinitions,
+  callBasetenSpecialistWithTools,
+  BASETEN_TOOL_ROUND_MAX_TOKENS,
+  BASETEN_MEMO_MAX_TOKENS,
+  BASETEN_TIMEOUT_MS,
+  BASETEN_TOTAL_BUDGET_MS,
+  BASETEN_MAX_TOKENS_DEFAULT,
+} from "./baseten";
 import { execSpecialistTool } from "./specialist-tools";
 import { selectEvidence, selectEvidenceForResolution, selectPriorityEvidence } from "./select-evidence";
 import { decideSpecialistNeed } from "./specialist";
@@ -573,7 +582,7 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
       // verified evidence, and returned as role tool messages. When the model
       // returns content only, the same single-shot behavior is preserved.
       const isRca = frozenIntent === "rca";
-      const specialistTimeout = isRca ? RCA_SPECIALIST_TIMEOUT_MS : 12000;
+      const specialistTimeout = isRca ? RCA_SPECIALIST_TIMEOUT_MS : BASETEN_TOTAL_BUDGET_MS;
       const t0 = Date.now();
       const specialistScope = { businessId: input.businessId, rangeStart: range.start, rangeEnd: range.end };
       const specialistExec = async (c: { id: string; name: string; args: Record<string, unknown> }) => {
@@ -593,7 +602,7 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
           user: specBuilt.user,
           tools: basetenToolDefinitions(specTools),
           exec: specialistExec,
-          maxTokens: BASETEN_MAX_TOKENS_DEFAULT,
+          maxTokens: BASETEN_TOOL_ROUND_MAX_TOKENS,
           timeoutMs: specialistTimeout,
           maxRounds: 3,
         });
@@ -606,44 +615,32 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
         const tParse0 = Date.now();
         const v = validateSpecialistOutput(spec.text, evidence);
         stage("baseten_response_parse", "baseten-specialist", spec.model, 0, Date.now() - tParse0, null, 200);
-        // Truncation is an honest limitation, not a silent pass: surface it so
-        // the owner knows the memo is partial, while still using the partial
-        // memo (evidence validation still applies separately).
-        // Live RCA fix: a truncated memo (finish_reason "length") is cut off
-        // mid-reasoning-trace — its planning notes and %-mentions are
-        // artifacts of the cut, not unsupported claims. Truncated memos are
-        // always usable (partial): the truncation notice is surfaced and the
-        // memo flows to Standard. Only non-truncated memos hard-fail on
-        // validation flags.
-        const hardWarnings = spec.truncated ? [] : v.warnings;
-        specialistValidation = spec.truncated
-          ? [`Specialist memo truncated at the token limit (finish_reason length) — analysis may be partial.`]
-          : [];
-        for (const w of v.warnings) specialistValidation.push(w);
-        stage("specialist_validation", "deterministic", "local", 0, Date.now() - tParse0, null, 200);
-        if (!spec.text.trim()) {
+
+        // If Baseten response has finish_reason "length" OR empty content (even after retry),
+        // mark the memo as unusable. Never pass a truncated memo to Spark as if it were complete
+        // (and never claim "specialist agrees" in that case).
+        if (spec.truncated || !spec.text.trim()) {
           specialistStatus = "invalid";
-        } else if (hardWarnings.length > 0) {
-          specialistStatus = "invalid";
-          // Keep the memo anyway: it was received + parsed (HTTP 200) and is
-          // fed to Standard composition with its validation flags. The
-          // invalid status only records that validation flagged content —
-          // the UI layer decides partial-use vs failed (see specialistUi).
-          specialistMemo = spec.text;
+          specialistMemo = null;
+          specialistValidation = [
+            "Specialist memo unusable (finish_reason length / truncated at token limit) — analysis discarded."
+          ];
         } else {
           specialistStatus = "ok";
           specialistMemo = spec.text;
+          specialistValidation = [...v.warnings];
         }
+        stage("specialist_validation", "deterministic", "local", 0, Date.now() - tParse0, null, 200);
         providerAttempts.push(
-          hardWarnings.length === 0
+          specialistStatus === "ok"
             ? buildOkAttempt({
                 attempt: "baseten-specialist", provider: "baseten-specialist", model: spec.model,
-                baseUrl: cfg.basetenBaseUrl, maxTokens: BASETEN_MAX_TOKENS_DEFAULT, latencyMs: Date.now() - t0,
+                baseUrl: cfg.basetenBaseUrl, maxTokens: BASETEN_MEMO_MAX_TOKENS, latencyMs: Date.now() - t0,
               })
             : buildErrorAttempt({
                 attempt: "baseten-specialist", provider: "baseten-specialist", model: spec.model,
-                baseUrl: cfg.basetenBaseUrl, maxTokens: BASETEN_MAX_TOKENS_DEFAULT, latencyMs: Date.now() - t0,
-                error: new Error(`Specialist output validation: ${hardWarnings.join(" | ").slice(0, 300)}`),
+                baseUrl: cfg.basetenBaseUrl, maxTokens: BASETEN_MEMO_MAX_TOKENS, latencyMs: Date.now() - t0,
+                error: new Error(`Specialist output validation: ${specialistValidation.join(" | ").slice(0, 300)}`),
               }),
         );
       } catch (e) {
@@ -655,7 +652,7 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
           buildErrorAttempt({
             attempt: "baseten-specialist", provider: "baseten-specialist",
             model: specialistModel || cfg.basetenModelId || "Muse Spark Open 1026",
-            baseUrl: cfg.basetenBaseUrl, maxTokens: BASETEN_MAX_TOKENS_DEFAULT,
+            baseUrl: cfg.basetenBaseUrl, maxTokens: BASETEN_MEMO_MAX_TOKENS,
             latencyMs: Date.now() - t0, error: e,
           }),
         );
@@ -703,7 +700,9 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
   // and the loop's serialized 8s/15s rounds were the dominant term pushing
   // live RCA past the 55s client deadline. Specialist + direct Standard
   // compose still run below.
-  const useToolLoop = needsTools && evidence !== null && frozenIntent !== "rca";
+  // Recommendation fix: if a specialist memo exists (Baseten), skip the tool loop
+  // and compose directly with the 20s compose timeout (prompt already has evidence + ranked candidates + memo).
+  const useToolLoop = needsTools && evidence !== null && frozenIntent !== "rca" && !specialistMemo;
   const toolScope = { businessId: input.businessId, rangeStart: range.start, rangeEnd: range.end };
   const execBase = { transactions: input.transactions, scope: toolCtx.scope, range, preset, nowIso: toolCtx.nowIso };
   // FINAL FIX (Failure 2): the tool loop propagates finish_reason. A final
@@ -734,9 +733,11 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
         throw e;
       }
       rounds += 1;
+      const remainingLoopMs = TOOL_LOOP_TIMEOUT_MS - (Date.now() - startedLoop);
+      const roundTimeoutMs = Math.max(1000, Math.min(20000, remainingLoopMs));
       const maxTokens = kind === "meta" ? budgetFor(frozenIntent).meta : budgetFor(frozenIntent).fireworks;
       const r = kind === "meta"
-        ? await callMetaStandardWithTools(messages, toolsForIntent(frozenIntent, question), maxTokens)
+        ? await callMetaStandardWithTools(messages, toolsForIntent(frozenIntent, question), maxTokens, roundTimeoutMs)
         : await callFireworksWithTools(messages, toolsForIntent(frozenIntent, question), maxTokens);
       provider = r.provider; model = r.model;
       inputTokens = (inputTokens ?? 0) + (r.inputTokens ?? 0);
@@ -793,9 +794,10 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
     // retryable transport faults only (timeout/network/429/5xx) — never a
     // same-budget retry after an empty/truncated response, which routes to
     // the Fireworks fallback with its own full budget instead.
+    const isCasualOrGreeting = frozenIntent === "greeting" || frozenIntent === "casual";
     const composeTimeout = attempt === "meta-retry"
       ? (frozenIntent === "rca" ? RCA_COMPOSE_RETRY_TIMEOUT_MS : 8000)
-      : (frozenIntent === "rca" ? RCA_COMPOSE_TIMEOUT_MS : 8000);
+      : (isCasualOrGreeting ? 8000 : RCA_COMPOSE_TIMEOUT_MS);
     // The RCA compose prompt carries the Baseten memo plus evidence, and the
     // reasoning model burns hidden tokens from the same pool — 2500-token
     // budget for RCA compose only; non-RCA budgets are untouched.
@@ -985,31 +987,17 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
   const specialistUi = ((): CopilotResponse["specialist"] => {
     if (!specialistNeed.needed) return { used: false, status: "not_required", reason: specialistNeed.reason };
     if (specialistStatus === "ok") {
-      // A truncation notice alone means the memo is partial but usable — it
-      // must not flip the specialist to failed. Only real evidence-validation
-      // flags (unsupported numbers, unhedged causality, unqualified impact)
-      // mark the memo as failed.
-      const hardFlags = specialistValidation.filter((w) => !/truncated at the token limit/i.test(w));
-      const bad = hardFlags.length > 0;
-      if (!bad && specialistValidation.length > 0) {
-        return { used: true, status: "used", reason: `${specialistNeed.reason} (${specialistValidation[0]})` };
-      }
       return {
-        used: !bad, status: bad ? "failed" : "used",
-        reason: bad ? `Specialist memo flagged: ${hardFlags[0]}` : specialistNeed.reason,
+        used: true,
+        status: "used",
+        reason: specialistValidation.length > 0
+          ? `${specialistNeed.reason} (${specialistValidation[0]})`
+          : specialistNeed.reason,
       };
     }
     if (specialistStatus === "unconfigured") return { used: false, status: "unconfigured", reason: "Specialist unavailable — analysis based on available evidence only." };
     if (specialistStatus === "invalid" || specialistStatus === "error") {
-      // Truncated memos are partial-but-usable (HTTP 200 + parsed memo fed to
-      // Standard with its truncation notice). Report partial use honestly
-      // instead of "failed validation".
-      const partialUsable = specialistMemo &&
-        specialistValidation.some((w) => /truncated at the token limit/i.test(w));
-      if (partialUsable) {
-        return { used: true, status: "used", reason: `${specialistNeed.reason} (${specialistValidation[0]})` };
-      }
-      return { used: false, status: "failed", reason: "Specialist analysis failed validation — analysis based on available evidence only." };
+      return { used: false, status: "failed", reason: "Specialist analysis failed or was truncated — analysis based on available evidence only." };
     }
     return { used: false, status: "skipped", reason: specialistNeed.reason };
   })();

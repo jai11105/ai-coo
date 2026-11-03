@@ -33,16 +33,14 @@ export interface ToolsResult extends ModelResult {
 }
 
 // Shared content extraction for reasoning-model chat/completions responses.
-// Handles: string content, OpenAI content-block arrays, reasoning_content
-// fallback (Meta/Fireworks reasoning models), refusal ignored. Never throws.
+// Handles: string content, OpenAI content-block arrays, refusal ignored.
+// reasoning_content is chain-of-thought and MUST NEVER be extracted as answer text.
 // FINAL FIX (Failure 2+5): finish-reason is surfaced so truncated partial
 // content is never presented as a complete answer. Callers check `truncated`.
 function extractTextContent(msg: unknown): string {
   if (!msg || typeof msg !== "object") return "";
   const m = msg as {
     content?: unknown;
-    reasoning_content?: unknown;
-    reasoning?: unknown;
   };
   const raw = m.content;
   if (typeof raw === "string" && raw.trim()) return raw.trim();
@@ -58,10 +56,6 @@ function extractTextContent(msg: unknown): string {
     }
     if (parts.length > 0) return parts.join("\n").trim();
   }
-  const rc = m.reasoning_content;
-  if (typeof rc === "string" && rc.trim()) return rc.trim();
-  const rz = m.reasoning;
-  if (typeof rz === "string" && rz.trim()) return rz.trim();
   return "";
 }
 
@@ -73,13 +67,24 @@ function finishReasonOf(json: unknown): string | null {
   } catch { return null; }
 }
 
+export const META_REASONING_EFFORT = (process.env.META_REASONING_EFFORT ?? "low").trim();
+
+function shouldSendMetaReasoningEffort(disabled?: boolean): boolean {
+  if (disabled) return false;
+  const val = META_REASONING_EFFORT.toLowerCase();
+  return Boolean(val && val !== "off" && val !== "none" && val !== '""' && val !== "''");
+}
+
 export async function postChatCompletions(opts: {
   base: string; apiKey: string; model: string;
   messages: ChatMsg[]; maxTokens: number; timeoutMs: number;
+  reasoningEffort?: string;
+  disableReasoningEffort?: boolean;
 }): Promise<{ text: string; inputTokens?: number; outputTokens?: number; status: number; finishReason: string | null; truncated: boolean }> {
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), opts.timeoutMs);
   let res: Response;
+  const sendReasoningEffort = !opts.disableReasoningEffort && Boolean(opts.reasoningEffort);
   try {
     res = await fetch(`${opts.base}/chat/completions`, {
       method: "POST",
@@ -93,6 +98,7 @@ export async function postChatCompletions(opts: {
         messages: opts.messages,
         temperature: 0.4,
         max_tokens: opts.maxTokens,
+        ...(sendReasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
       }),
       signal: ctrl.signal,
     });
@@ -103,6 +109,14 @@ export async function postChatCompletions(opts: {
   }
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 400);
+    if (res.status === 400 && /reasoning_effort/i.test(body) && !opts.disableReasoningEffort && opts.reasoningEffort) {
+      console.log(`[meta] HTTP 400 reasoning_effort rejected (${body}) — retrying once without reasoning_effort`);
+      return postChatCompletions({
+        ...opts,
+        reasoningEffort: undefined,
+        disableReasoningEffort: true,
+      });
+    }
     const err = new Error(`Provider HTTP ${res.status}. ${body}`);
     (err as unknown as { status?: number }).status = res.status;
     throw err;
@@ -136,10 +150,11 @@ export async function postChatCompletions(opts: {
 export async function callMetaStandard(system: string, user: string, maxTokens = 1200, timeoutMs = 8000): Promise<ModelResult> {
   const c = aiConfig();
   if (!c.metaApiKey) throw new Error("META_API_KEY is not configured on the server.");
+  const effort = shouldSendMetaReasoningEffort() ? META_REASONING_EFFORT : undefined;
   const r = await postChatCompletions({
     base: c.metaBaseUrl, apiKey: c.metaApiKey, model: c.metaModelId,
     messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    maxTokens, timeoutMs,
+    maxTokens, timeoutMs, reasoningEffort: effort,
   });
   if (!r.text) throw new Error("Primary model returned an empty response.");
   return { text: r.text, provider: "meta", model: c.metaModelId, inputTokens: r.inputTokens, outputTokens: r.outputTokens, finishReason: r.finishReason, truncated: r.truncated };
@@ -168,24 +183,25 @@ export async function callFireworksFallback(system: string, user: string, maxTok
   return { text: r.text, provider: "fireworks-fallback", model: c.fireworksModelId, inputTokens: r.inputTokens, outputTokens: r.outputTokens, finishReason: r.finishReason, truncated: r.truncated };
 }
 
-/** Retryable = transport/timeout/5xx/429. Never retry on 4xx validation.
+/** Retryable = transport/5xx/429. Never retry on 4xx validation.
+ * Do not retry on timeout/abort — a timeout goes straight to the next fallback step.
  * Empty/truncated responses are NOT retryable on the same provider (a
  * same-budget retry would exhaust the same token pool again) — they route
  * straight to the Fireworks fallback, which has its own full budget. */
 export function isRetryableProviderError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : "";
   const status = (e as unknown as { status?: number } | null)?.status;
-  // Retryable: 429 rate-limit, 5xx server faults (500/502/503/529), and
-  // transport faults (timeout/network/abort). Timeouts surface either as an
-  // AbortError or as the providers.ts "Provider timed out." message — both
-  // must count so a stalled primary actually retries instead of dropping
-  // straight to degraded. Never retry 400/401/403/404/402 validation or
-  // empty/truncated responses (same-budget retry would exhaust the pool).
+
+  // Do not retry on timeout/abort — a timeout goes straight to the next fallback step.
+  if (e instanceof Error && e.name === "AbortError") return false;
+  if (/timed out|timeout|aborted|\babort\b/i.test(msg)) return false;
+
+  // Retry only on 429 rate-limit, 5xx server faults, and network connection errors.
   if (status === 429) return true;
   if (typeof status === "number" && status >= 500) return true;
   if (typeof status === "number" && status >= 400 && status < 500) return false;
-  if (e instanceof Error && e.name === "AbortError") return true;
-  return /timed out|timeout|unreachable|network|ECONN|ETIMEDOUT|fetch failed|aborted|abort/i.test(msg);
+
+  return /unreachable|network|ECONNREFUSED|ECONNRESET|fetch failed|ENOTFOUND|EAI_AGAIN/i.test(msg);
 }
 
 /** Classify a provider failure into the task-mandated buckets (no leakage).
@@ -218,10 +234,13 @@ export function classifyFailure(e: unknown): string {
 async function postChatWithTools(opts: {
   base: string; apiKey: string; model: string; messages: ToolMsg[];
   tools: CopilotToolDefinition[]; maxTokens: number; timeoutMs: number;
+  reasoningEffort?: string;
+  disableReasoningEffort?: boolean;
 }): Promise<{ text: string; toolCalls: { id: string; name: string; args: Record<string, unknown> }[]; inputTokens?: number; outputTokens?: number; finishReason: string | null; truncated: boolean }> {
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), opts.timeoutMs);
   let res: Response;
+  const sendReasoningEffort = !opts.disableReasoningEffort && Boolean(opts.reasoningEffort);
   try {
     const wireMessages = opts.messages.map((m) => {
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
@@ -236,7 +255,15 @@ async function postChatWithTools(opts: {
     res = await fetch(`${opts.base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${opts.apiKey}` },
-      body: JSON.stringify({ model: opts.model, messages: wireMessages, tools: opts.tools, tool_choice: "auto", temperature: 0.4, max_tokens: opts.maxTokens }),
+      body: JSON.stringify({
+        model: opts.model,
+        messages: wireMessages,
+        tools: opts.tools,
+        tool_choice: "auto",
+        temperature: 0.4,
+        max_tokens: opts.maxTokens,
+        ...(sendReasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
+      }),
       signal: ctrl.signal,
     });
   } catch (e) {
@@ -244,6 +271,14 @@ async function postChatWithTools(opts: {
   } finally { clearTimeout(timeout); }
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 400);
+    if (res.status === 400 && /reasoning_effort/i.test(body) && !opts.disableReasoningEffort && opts.reasoningEffort) {
+      console.log(`[meta] HTTP 400 reasoning_effort rejected (${body}) — retrying once without reasoning_effort`);
+      return postChatWithTools({
+        ...opts,
+        reasoningEffort: undefined,
+        disableReasoningEffort: true,
+      });
+    }
     const err = new Error(`Provider HTTP ${res.status}. ${body}`);
     (err as unknown as { status?: number }).status = res.status;
     throw err;
@@ -275,10 +310,11 @@ async function postChatWithTools(opts: {
  * content null (verified: max300 -> null, max900 -> valid answer).
  * Default raised to 1200 — reasoning-heavy sales questions returned empty at
  * 900 on both primary and fallback. */
-export async function callMetaStandardWithTools(messages: ToolMsg[], tools: CopilotToolDefinition[], maxTokens = 1200, timeoutMs = 8000): Promise<ToolsResult> {
+export async function callMetaStandardWithTools(messages: ToolMsg[], tools: CopilotToolDefinition[], maxTokens = 1200, timeoutMs = 20000): Promise<ToolsResult> {
   const c = aiConfig();
   if (!c.metaApiKey) throw new Error("META_API_KEY is not configured on the server.");
-  const r = await postChatWithTools({ base: c.metaBaseUrl, apiKey: c.metaApiKey, model: c.metaModelId, messages, tools, maxTokens, timeoutMs });
+  const effort = shouldSendMetaReasoningEffort() ? META_REASONING_EFFORT : undefined;
+  const r = await postChatWithTools({ base: c.metaBaseUrl, apiKey: c.metaApiKey, model: c.metaModelId, messages, tools, maxTokens, timeoutMs, reasoningEffort: effort });
   return { text: r.text, provider: "meta", model: c.metaModelId, inputTokens: r.inputTokens, outputTokens: r.outputTokens, toolCalls: r.toolCalls, finishReason: r.finishReason, truncated: r.truncated };
 }
 /** Slice 7: Fireworks fallback with tools (same loop driver, same guards).

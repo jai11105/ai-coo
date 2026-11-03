@@ -42,7 +42,7 @@ export interface OrchestratorInput {
  * when the specialist produced no memo; the Fireworks fallback is honest
  * fallback reasoning, labeled as such — never a substitute specialist. */
 export const RCA_SPECIALIST_TIMEOUT_MS = 20000;
-export const RCA_COMPOSE_TIMEOUT_MS = 15000;
+export const RCA_COMPOSE_TIMEOUT_MS = 20000;
 export const RCA_COMPOSE_RETRY_TIMEOUT_MS = 8000;
 /** RCA compose output budget. The RCA compose prompt carries the ~3000-char
  * Baseten memo plus full evidence, and muse-spark-1.3 burns hidden reasoning
