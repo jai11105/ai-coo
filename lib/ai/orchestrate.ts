@@ -216,7 +216,12 @@ export async function orchestrate(input: OrchestratorInput): Promise<CopilotResp
       };
     }
     try {
-      const r = await generateCopilotImage({ prompt: vv.prompt || question, businessId: input.businessId, size: vv.size });
+      const r = await generateCopilotImage({
+        prompt: vv.prompt || question,
+        businessId: input.businessId,
+        size: vv.size,
+        authContext: { businessName: input.businessName },
+      });
       const latencyMs = Date.now() - started;
       if (!r.ok) {
         const answer = `Sorry — I couldn't create that image: ${r.error} Please describe the creative again to retry.`;
