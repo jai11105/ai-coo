@@ -190,10 +190,13 @@ export function VoiceEntryButton({ onTranscript, onDraft, onError, disabled }: P
     onTranscript(transcript);
     setStatus("extracting");
     try {
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const res = await fetch("/api/entry/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript, today }),
       });
       const json = (await res.json().catch(() => null)) as {
         data?: { draft?: unknown };

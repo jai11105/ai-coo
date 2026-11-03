@@ -12,10 +12,18 @@ export const maxDuration = 60;
  * Returns { data: { draft } }.
  * The draft is for review/edit only — this route never writes to Supabase.
  */
+function isValidCalendarDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => null)) as { transcript?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { transcript?: unknown; today?: unknown } | null;
     const transcript = typeof body?.transcript === "string" ? body.transcript.trim() : "";
+    const todayRaw = typeof body?.today === "string" ? body.today.trim() : "";
+    const today = isValidCalendarDate(todayRaw) ? todayRaw : undefined;
     if (!transcript) {
       return NextResponse.json(
         { error: { code: "VALIDATION_ERROR", message: "Transcript is required." } },
@@ -28,14 +36,23 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const draft = await extractWithContributor(transcript);
+    const draft = await extractWithContributor(transcript, today);
     return NextResponse.json({
       data: { draft },
       meta: { timestamp: new Date().toISOString() },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Extraction failed.";
-    const status = /not configured/i.test(message) ? 503 : 502;
-    return NextResponse.json({ error: { code: "EXTRACT_FAILED", message } }, { status });
+    const meta = (e as { code?: unknown; upstreamStatus?: unknown } | null) ?? {};
+    const code = typeof meta.code === "string" ? meta.code : "EXTRACT_FAILED";
+    let status = /not configured/i.test(message) ? 503 : 502;
+    // Forward safe upstream provider status (no keys/secrets) so the UI can
+    // distinguish auth/quota/model errors from empty content.
+    if (typeof meta.upstreamStatus === "number" && meta.upstreamStatus >= 400 && meta.upstreamStatus <= 599) {
+      status = meta.upstreamStatus;
+    } else if (/timed out|Could not reach/i.test(message)) {
+      status = 504;
+    }
+    return NextResponse.json({ error: { code, message } }, { status });
   }
 }
