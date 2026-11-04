@@ -240,6 +240,7 @@ export default function CopilotPage() {
       }
 
       const d = json.data;
+      console.info(`[copilot] reply received, persisted: ${Boolean(d.persisted)}`);
       const isImageReply = typeof d.answer === "string" && d.answer.startsWith("![generated creative](");
 
       // Derive basetenModelLabel strictly from Baseten stage in stageTimings (strip path & leading "muse-")
@@ -373,7 +374,13 @@ export default function CopilotPage() {
     setMicError(null); // Clear previous notice on next mic click
 
     if (recording) {
-      mediaRef.current?.stop();
+      if (!mediaRef.current || mediaRef.current.state === "inactive") {
+        setRecording(false);
+        setMicStarting(false);
+        return;
+      }
+      mediaRef.current.stop();
+      console.info("[voice] recording stopped");
       return;
     }
 
@@ -402,6 +409,7 @@ export default function CopilotPage() {
       rec.start();
       setMicStarting(false);
       setRecording(true);
+      console.info("[voice] recording started");
     } catch (e: unknown) {
       setMicStarting(false);
       setRecording(false);
@@ -421,6 +429,7 @@ export default function CopilotPage() {
   const transcribeAndSend = async (raw: Blob) => {
     try {
       setTranscribing(true);
+      console.info("[voice] uploading audio");
       const { blobToWav16kMono } = await import("@/lib/audio-wav");
       const wav = await blobToWav16kMono(raw);
       const form = new FormData();
@@ -430,10 +439,16 @@ export default function CopilotPage() {
         data?: { transcript?: string };
         error?: { message?: string };
       } | null;
-      if (!res.ok || !json?.data?.transcript) return;
+      if (!res.ok || !json?.data?.transcript) {
+        console.info("[voice] transcription failed");
+        setMicError("Could not hear that, please try again.");
+        return;
+      }
+      console.info(`[voice] transcript received (chars: ${json.data.transcript.length})`);
       await sendText(json.data.transcript, true /* isVoice */);
     } catch {
-      /* Voice transcription error handled */
+      console.info("[voice] transcription failed");
+      setMicError("Could not hear that, please try again.");
     } finally {
       setTranscribing(false);
     }
@@ -490,6 +505,7 @@ export default function CopilotPage() {
 
   const businessName = isLive && activeBusiness?.name ? activeBusiness.name : "Demo Business";
   const isComposerDisabled = sending || micStarting || recording || transcribing;
+  const isMicDisabled = sending || transcribing || micStarting;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] max-w-3xl mx-auto overflow-hidden animate-fade-in">
@@ -577,6 +593,7 @@ export default function CopilotPage() {
           micError={micError}
           onDismissMicError={() => setMicError(null)}
           disabled={isComposerDisabled}
+          micDisabled={isMicDisabled}
         />
         <audio ref={audioRef} className="hidden" />
       </footer>

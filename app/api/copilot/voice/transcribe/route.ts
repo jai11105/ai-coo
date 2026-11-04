@@ -53,6 +53,7 @@ export async function POST(req: Request) {
     if (!(file instanceof Blob) || file.size === 0) {
       return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Empty recording. Please record again and speak clearly." } }, { status: 400 });
     }
+    console.info(`[api/transcribe] audio received (${file.size} bytes)`);
     if (file.size > 15 * 1024 * 1024) {
       return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Recording is too large (max 15 MB). Please record a shorter question." } }, { status: 400 });
     }
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
     if (!transcript) {
       return NextResponse.json({ error: { code: "EMPTY_TRANSCRIPT", message: "No speech was recognized. Please record again and speak clearly." } }, { status: 422 });
     }
+    console.info("[api/transcribe] ok");
     return NextResponse.json({ data: { transcript }, meta: { timestamp: new Date().toISOString() } });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Transcription failed.";

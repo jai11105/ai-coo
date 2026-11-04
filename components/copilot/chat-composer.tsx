@@ -15,6 +15,7 @@ interface Props {
   micError?: string | null;
   onDismissMicError?: () => void;
   disabled: boolean;
+  micDisabled?: boolean;
   placeholder?: string;
 }
 
@@ -36,6 +37,7 @@ export function ChatComposer({
   micError = null,
   onDismissMicError,
   disabled,
+  micDisabled = false,
   placeholder = "Message Copilot…",
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -141,7 +143,7 @@ export function ChatComposer({
           <button
             type="button"
             onClick={onToggleVoice}
-            disabled={disabled || transcribing}
+            disabled={micDisabled}
             aria-pressed={recording || micStarting}
             aria-label={
               recording

@@ -37,6 +37,13 @@ export async function POST(req: Request) {
       );
     }
     const draft = await extractWithContributor(transcript, today);
+    let defaulted = false;
+    if (!draft.date && today) {
+      draft.date = today;
+      draft.uncertain_fields = draft.uncertain_fields.filter((f) => f !== "date");
+      defaulted = true;
+    }
+    console.info("[extract-date]", { clientToday: today, extractedDate: draft.date, defaulted });
     return NextResponse.json({
       data: { draft },
       meta: { timestamp: new Date().toISOString() },

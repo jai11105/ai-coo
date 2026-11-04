@@ -66,6 +66,7 @@ export async function POST(req: Request) {
           latencyMs: result.latencyMs, status: "ok", createdAt: new Date().toISOString(),
         });
       } catch { /* best-effort */ }
+      console.info("[api/chat] turn done, persisted: false");
       return NextResponse.json({
         data: { ...result, conversationId },
         meta: { requestId, timestamp: new Date().toISOString() },
@@ -129,6 +130,7 @@ export async function POST(req: Request) {
     } catch { /* best-effort */ }
 
     const warnings = persistNote ? [...result.warnings, `History note: ${persistNote}`] : result.warnings;
+    console.info(`[api/chat] turn done, persisted: ${Boolean(sessionId && userMessageId && assistantMessageId)}`);
     return NextResponse.json({
       data: {
         ...result, conversationId, warnings,

@@ -30,15 +30,25 @@ function toNumOrNull(v: unknown): number | null {
 function toDateOrEmpty(v: unknown): string {
   const s = toStr(v);
   if (!s) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const d = new Date(`${s}T00:00:00Z`);
-    if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s) return s;
+  const match = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return "";
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = `${y}-${pad(m)}-${pad(d)}`;
+  const date = new Date(`${iso}T00:00:00Z`);
+  if (!Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso) {
+    return iso;
   }
   return "";
 }
 
 /** System prompt for Contributor transcript-to-JSON extraction. */
-export function extractionSystemPrompt(todayYmd: string): string {
+export function extractionSystemPrompt(todayYmd?: string): string {
+  const todayClause = todayYmd
+    ? `- Today is ${todayYmd}. If the owner does not mention any date, set date to ${todayYmd}. If they mention a relative day, compute it from today as YYYY-MM-DD: today / innaiku / indru / aaj = today; yesterday / nethu / netru / kal (when the entry is about something already done) = yesterday; day before yesterday / mundhanethu / mundhanaal / parson = 2 days ago; tomorrow / naalaiku / naalai = tomorrow. Spoken calendar dates such as "2nd November" or "5th" use the current year, and the current month when only a day is given. Never output a date in any format other than YYYY-MM-DD. Do not add "date" to uncertain_fields when the date defaulted to today.`
+    : "- Leave date empty when unknown.";
   return [
     "You extract a single business transaction from a spoken log-entry transcript.",
     "Return ONLY valid JSON (no markdown, no commentary) with exactly these keys:",
@@ -50,8 +60,7 @@ export function extractionSystemPrompt(todayYmd: string): string {
     "Rules:",
     '- transaction_type is sale, purchase or expense. "sold" implies sale;',
     ' "bought/purchased/stock" implies purchase; "paid/spent/rent/salary" implies expense.',
-    `- Today is ${todayYmd}. Resolve relative dates against it;`,
-    " leave date empty when unknown.",
+    todayClause,
     "- Money: plain rupee numbers as strings (e.g. 250), never symbols/commas.",
     "- Sale needs item_name + quantity + unit_selling_price.",
     "- Purchase needs item_name + quantity + unit_buying_cost.",

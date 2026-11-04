@@ -177,7 +177,7 @@ export default function LogEntryPage() {
     setSaved("");
     setVType(d.transaction_type);
     setTab(d.transaction_type);
-    setVDate(/^\d{4}-\d{2}-\d{2}$/.test(d.date.trim()) ? d.date.trim() : "");
+    setVDate(/^\d{4}-\d{2}-\d{2}$/.test(d.date.trim()) ? d.date.trim() : nowLocal().slice(0, 10));
     setVDesc(d.description);
     setVCategory(d.category);
     setVCounterparty(d.counterparty);
